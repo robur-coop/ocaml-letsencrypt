@@ -1,0 +1,7 @@
+Build with:
+
+  $ oasis setup -setup-update dynamic
+  $ make
+
+
+Note: acme.ml is not tested, and should be considered yet to be implemented.

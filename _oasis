@@ -1,0 +1,23 @@
+OASISFormat: 0.4
+Name:        acme
+Version:     0.1
+Synopsis:    ACME support for OCaml
+Plugins:     META (0.4), DevFiles (0.4)
+BuildTools:  ocamlbuild
+Authors:     maker <maker@tumbolandia.net>
+License:     WTFPL
+
+Executable "main"
+  Path: src
+  MainIs: main.ml
+  CompiledObject: native
+  BuildDepends: x509, cohttp, yojson, lwt, cohttp.lwt, base64, pkg_cohttp,
+                nocrypto.lwt, zarith
+
+
+Executable "test"
+  Path: src
+  MainIs: tests.ml
+  CompiledObject: native
+  BuildDepends: x509, cohttp, yojson, lwt, cohttp.lwt, base64, pkg_cohttp,
+                nocrypto.lwt, zarith, oUnit
