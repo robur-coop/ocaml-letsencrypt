@@ -1,5 +1,7 @@
 open OUnit2
 
+module Json = Yojson.Basic
+
 let testkey_pem = "
 -----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEA4xgZ3eRPkwoRvy7qeRUbmMDe0V+xH9eWLdu0iheeLlrmD2mq
@@ -30,9 +32,7 @@ EQeIP6dZtv8IMgtGIb91QX9pXvP0aznzQKwYIA8nZgoENCPfiMTPiEDT9e/0lObO
 -----END RSA PRIVATE KEY-----
 " |> Cstruct.of_string
 
-module Json = Yojson.Basic
-
-let jws_foo () =
+let jws_encode_somedata () =
   let maybe_key = X509.Encoding.Pem.Private_key.of_pem_cstruct testkey_pem in
   let priv_key = match maybe_key with
     | [`RSA skey] -> skey
@@ -44,7 +44,7 @@ let jws_foo () =
   jws
 
 let test_protected test_ctx =
-  let jws = jws_foo () in
+  let jws = jws_encode_somedata () in
   let expected =
       "eyJhbGciOiJSUzI1NiIsImp3ayI6eyJlIjoiQVFBQiIsImt0eSI6" ^
       "IlJTQSIsIm4iOiI0eGdaM2VSUGt3b1J2eTdxZVJVYm1NRGUwVi14" ^
@@ -62,14 +62,14 @@ let test_protected test_ctx =
     | _ -> assert_failure "Cannot get field \"protected\"."
 
 let test_payload test_ctx =
-  let jws = jws_foo () in
+  let jws = jws_encode_somedata () in
   let expected = "eyJNc2ciOiJIZWxsbyBKV1MifQ" in
   match Json.Util.member "payload" jws with
   | `String got -> assert_equal got expected
   | _ -> assert_failure "Cannot get field \"payload\"."
 
 let test_signature test_ctx =
-  let jws = jws_foo () in
+  let jws = jws_encode_somedata () in
   let expected =
     "eAGUikStX_UxyiFhxSLMyuyBcIB80GeBkFROCpap2sW3EmkU_ggF" ^
     "knaQzxrTfItICSAXsCLIquZ5BbrSWA_4vdEYrwWtdUj7NqFKjHRa" ^
