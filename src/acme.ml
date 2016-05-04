@@ -5,6 +5,7 @@ open Nocrypto
 
 
 module Pem = X509.Encoding.Pem
+module Json = Yojson.Basic
 
 type client_t = {
     ca: string;
@@ -22,7 +23,7 @@ let http_get url =
   Client.get (Uri.of_string url) >>= fun (resp, body) ->
   let code = resp |> Response.status |> Code.code_of_status in
   let headers = resp |> Response.headers in
-  let body = body |> Cohttp_lwt_body.to_string in
+  body |> Cohttp_lwt_body.to_string >>= fun body ->
   Lwt.return (code, headers, body)
 
 let http_post_jws key nonce data url =
@@ -39,10 +40,13 @@ let discover ca =
   http_get url >>= fun (code, headers, body) ->
   Lwt.return (headers, body)
 
-let extract_nonce headers =
-  match Header.get headers "Replay-Nonce" with
+let get_header_or_fail name headers =
+  match Header.get headers name with
   | Some nonce -> return nonce
   | None -> fail_with "Error: I could not fetch a new nonce."
+
+let extract_nonce =
+  get_header_or_fail "Replay-Nonce"
 
 let new_nonce from =
     discover from >>= fun (headers, body) ->
@@ -66,28 +70,54 @@ let cli_send cli data url =
   let headers = resp |> Response.headers in
   extract_nonce headers >>= fun next_nonce ->
   body |> Cohttp_lwt_body.to_string >>= fun body ->
-  if Code.is_error code then
-    let err_msg = Printf.sprintf
-                    "Error: HTTP response code %d. \n %s\n %s"
-                    code (Header.to_string headers) body in
-    fail_with err_msg
-  else
-    (* XXX: is this like cheating? *)
-    (cli.next_nonce <- next_nonce; return body)
+  (* XXX: is this like cheating? *)
+  cli.next_nonce <- next_nonce;
+  return (code, headers, body)
 
 let new_reg cli =
   let url = cli.ca ^ "/acme/new-reg" in
   let body =
     {|{"resource": "new-reg", "agreement": "https://letsencrypt.org/documents/LE-SA-v1.0.1-July-27-2015.pdf"}|}
   in
-  cli_send cli body url
+  cli_send cli body url >>= fun (code, headers, body) ->
+  (* here the "Location" header contains the registration uri.
+   * However, it seems for a simple client this information is not necessary.
+   * Also, in a bright future these prints should be transformed in logs.*)
+  match code with
+  | 201 -> print_endline "Account created."; return_nil
+  | 409 -> print_endline "Already registered."; return_nil
+  | _   ->
+     let err_msg = Printf.sprintf "Error: shit happened in registration. Error code %d; body %s"
+                                  code body in
+     fail_with err_msg
+
+let get_http01_challenge authorization =
+  let challenges = Json.Util.member "challenges" authorization |> Json.Util.to_list in
+  let is_http01 c = Json.Util.member "type" c = `String "http-01" in
+  match List.filter is_http01 challenges with
+  | []  -> fail_with "No supported challenges found."
+  | challenge :: _ ->
+     let token = Json.Util.member "token" challenge |> Json.Util.to_string in
+     let uri = Json.Util.member "uri" challenge |> Json.Util.to_string in
+     return {token=token; uri=uri}
+
+let do_http01_challenge cli challenge =
+  let token = challenge.token in
+  let pk = Rsa.pub_of_priv cli.skey in
+  let thumbprint = Jwk.thumbprint pk in
+  let path = token in
+  let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
+  Printf.printf "Now put %s in a file named \"%s\"" key_authorization path;
+  return_nil
 
 let new_authz cli domain =
   let url = cli.ca ^ "/acme/new-authz" in
   let body = Printf.sprintf
-    {|{"resouce": "new-authz", "identifier": {"type": "dns", "value": "%s"}}|}
+    {|{"resource": "new-authz", "identifier": {"type": "dns", "value": "%s"}}|}
     domain in
-  cli_send cli body url
+  cli_send cli body url >>= fun (code, headers, body) ->
+  let authorization = Json.from_string body in
+  get_http01_challenge authorization
 
 let challenge_met cli challenge =
   let token = challenge.token in
@@ -100,8 +130,25 @@ let challenge_met cli challenge =
                    key_authorization in
   cli_send cli data challenge.uri
 
+let pool_challenge_status cli challenge =
+  cli_recv challenge.uri >>= fun (code, headers, body) ->
+  let challenge_status = Json.from_string body in
+  let status = Json.Util.member "status" challenge_status |> Json.Util.to_string in
+  match status with
+  | "valid" -> return_true
+  | "pending" -> return_false
+  | _ -> fail_with "I got gibberish while polling for challange status."
+
 let new_cert cli =
+  (* formulate the request *)
   let url = cli.ca ^ "/acme/new-cert" in
-  let der = X509.Encoding.cs_of_signing_request cli.csr |> Cstruct.to_string in
-  let body = Printf.sprintf {|{"resource": "new-cert", "csr": "%s"}|} der in
-  cli_send cli body url
+  let der = X509.Encoding.cs_of_signing_request cli.csr |> Cstruct.to_string |> B64u.urlencode in
+  let data = Printf.sprintf {|{"resource": "new-cert", "csr": "%s"}|} der in
+  cli_send cli data url >>= fun (code, headers, body) ->
+  (* process the response *)
+  let der = B64u.urldecode body |> Cstruct.of_string in
+  match X509.Encoding.parse der with
+  | Some crt ->
+     let pem = Pem.Certificate.to_pem_cstruct [crt] |> Cstruct.to_string in
+     print_endline pem |> return
+  | None -> fail_with "I got gibberish while trying to decode the new certificate."

@@ -58,4 +58,4 @@ let () =
        Lwt.return body
   in
   let message = Lwt_main.run main in
-  print_endline message
+  print_endline message.token; print_endline message.uri
