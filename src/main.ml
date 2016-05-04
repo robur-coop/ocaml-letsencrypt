@@ -28,6 +28,7 @@ Uat+hCkCgYBRfwK7usbZWP4YfzmnQc3BP4RRfPl3bTBqkUu2IsB6lU9J7NjVP+62
 oWu3/HQxkbjaBDOCCyQm7gOrF3Na1uclfNdIYhK94w1TQnWBaM3MYRHGjAYm1XNU
 KQG6J8U2wCaf+W2C4gyEih9ygAaqIRQvFDwOz2QB3BSrmjO5380J2A==
 -----END RSA PRIVATE KEY-----"
+
 let csr_pem = "-----BEGIN CERTIFICATE REQUEST-----
 MIICoTCCAYkCAQAwXDELMAkGA1UEBhMCQVUxEzARBgNVBAgMClNvbWUtU3RhdGUx
 ITAfBgNVBAoMGEludGVybmV0IFdpZGdpdHMgUHR5IEx0ZDEVMBMGA1UEAwwMdGVz
@@ -51,10 +52,10 @@ let () =
     Nocrypto_entropy_lwt.initialize () >>= fun () ->
     new_cli (Cstruct.of_string rsa_pem) (Cstruct.of_string csr_pem) >>= function
     | `Error _ -> Lwt.fail End_of_file
-    | `Ok cli -> new_reg cli >>= fun (code, headers, body) ->
-                 (Printf.sprintf "Code: %d\n Headers: %s\n Body: %s"
-                                 code (Cohttp.Header.to_string headers) body) |> Lwt.return
-
+    | `Ok cli ->
+       new_reg cli >>= fun body ->
+       new_authz cli "tumbolandia.net" >>= fun body ->
+       Lwt.return body
   in
   let message = Lwt_main.run main in
   print_endline message

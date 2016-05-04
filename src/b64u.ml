@@ -7,7 +7,7 @@ let tail s =
   String.sub s 1 (String.length s - 1)
 
 let rec trim_leading_null s =
-  if (head s) == Char.chr 0 then trim_leading_null (tail s)
+  if head s == Char.chr 0 then trim_leading_null (tail s)
   else s
 
 (** byte reversing *)
