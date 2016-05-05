@@ -10,3 +10,4 @@ PKG cohttp
 PKG x509
 PKG zarith
 PKG oUnit
+PKG cmdliner

@@ -12,7 +12,7 @@ Executable "main"
   MainIs: main.ml
   CompiledObject: native
   BuildDepends: x509, cohttp, yojson, lwt, cohttp.lwt, base64, pkg_cohttp,
-                nocrypto.lwt, zarith
+                nocrypto.lwt, zarith, cmdliner
 
 
 Executable "test"
