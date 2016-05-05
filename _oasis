@@ -7,13 +7,12 @@ BuildTools:  ocamlbuild
 Authors:     maker <maker@tumbolandia.net>
 License:     WTFPL
 
-Executable "main"
+Executable "oacmel"
   Path: src
-  MainIs: main.ml
+  MainIs: oacmel.ml
   CompiledObject: native
   BuildDepends: x509, cohttp, yojson, lwt, cohttp.lwt, base64, pkg_cohttp,
                 nocrypto.lwt, zarith, cmdliner
-
 
 Executable "test"
   Path: src

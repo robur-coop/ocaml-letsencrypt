@@ -1,4 +1,4 @@
-open Acme
+open Acme.Client
 open Cmdliner
 open Lwt
 
@@ -35,7 +35,10 @@ let main rsa_pem csr_pem  =
 
 let info =
   let doc = "just another ACME client" in
-  let man = [`S "BUGS"; `P "Email bug reports to <maker@tumbolandia.net>"] in
+  let man = [
+      `S "DESCRIPTION"; `P "This is software is experimental. Don't use it.";
+      `S "BUGS"; `P "Email bug reports to <maker@tumbolandia.net>";
+    ] in
   Term.info "oacmel" ~version:"0.1" ~doc ~man
 
 let () =
