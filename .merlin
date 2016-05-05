@@ -2,12 +2,13 @@ S src
 
 B _build/**
 
-PKG nocrypto
-PKG yojson
 PKG base64
-PKG lwt
-PKG cohttp
-PKG x509
-PKG zarith
-PKG oUnit
 PKG cmdliner
+PKG cohttp
+PKG dispatch
+PKG lwt
+PKG nocrypto
+PKG oUnit
+PKG x509
+PKG yojson
+PKG zarith
