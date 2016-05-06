@@ -12,7 +12,7 @@ let read_file filename =
 
 let rsa_pem_arg =
   let doc = "File containing the PEM-encoded RSA private key." in
-  Arg.(value & opt string "priv.key" & info ["key"] ~docv:"FILE" ~doc)
+  Arg.(value & opt string "priv.key" & info ["account-key"] ~docv:"FILE" ~doc)
 
 let csr_pem_arg =
   let doc = "File containing the PEM-encoded CSR." in

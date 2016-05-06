@@ -8,7 +8,7 @@ module Json = Yojson.Basic
 
 type client_t = {
     ca: string;
-    skey: Rsa.priv;
+    account_key: Rsa.priv;
     csr:  X509.CA.signing_request;
     mutable next_nonce: string;
   }
@@ -63,16 +63,16 @@ let new_cli ?(ca="https://acme-v01.api.letsencrypt.org") rsa_pem csr_pem =
   let maybe_rsa = Pem.Private_key.of_pem_cstruct rsa_pem in
   let maybe_csr = Pem.Certificate_signing_request.of_pem_cstruct csr_pem in
   match maybe_rsa, maybe_csr with
-    | [`RSA skey], [csr] ->
+    | [`RSA key], [csr] ->
        new_nonce ca >>= fun nonce ->
-       `Ok {skey=skey; csr=csr; ca=ca; next_nonce=nonce} |> return
+       `Ok {account_key=key; csr=csr; ca=ca; next_nonce=nonce} |> return
     | _ ->
        fail_with "Error: there's a problem paring those pem files."
 
 let cli_recv = http_get
 
 let cli_send cli data url =
-  http_post_jws cli.skey cli.next_nonce data url >>= fun (resp, body) ->
+  http_post_jws cli.account_key cli.next_nonce data url >>= fun (resp, body) ->
   let code = resp |> Response.status |> Code.code_of_status in
   let headers = resp |> Response.headers in
   extract_nonce headers >>= fun next_nonce ->
@@ -110,7 +110,7 @@ let get_http01_challenge authorization =
 
 let do_http01_challenge cli challenge =
   let token = challenge.token in
-  let pk = Rsa.pub_of_priv cli.skey in
+  let pk = Rsa.pub_of_priv cli.account_key in
   let thumbprint = Jwk.thumbprint pk in
   let path = token in
   let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
@@ -128,7 +128,7 @@ let new_authz cli domain =
 
 let challenge_met cli challenge =
   let token = challenge.token in
-  let pub = Rsa.pub_of_priv cli.skey in
+  let pub = Rsa.pub_of_priv cli.account_key in
   let thumbprint = Jwk.thumbprint pub in
   let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
   (* write key_authorization *)
