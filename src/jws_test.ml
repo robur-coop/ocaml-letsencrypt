@@ -32,6 +32,30 @@ EQeIP6dZtv8IMgtGIb91QX9pXvP0aznzQKwYIA8nZgoENCPfiMTPiEDT9e/0lObO
 -----END RSA PRIVATE KEY-----
 " |> Cstruct.of_string
 
+let expected_protected =
+  "eyJhbGciOiJSUzI1NiIsImp3ayI6eyJlIjoiQVFBQiIsImt0eSI6" ^
+  "IlJTQSIsIm4iOiI0eGdaM2VSUGt3b1J2eTdxZVJVYm1NRGUwVi14" ^
+  "SDllV0xkdTBpaGVlTGxybUQybXFXWGZQOUllU0tBcGJuMzRnOFR1" ^
+  "QVM5ZzV6aHE4RUxRM2ttanItS1Y4NkdBTWdJNlZBY0dscTNRcnpw" ^
+  "VENmXzMwQWI3LXphd3JmUmFGT05hMUh3RXpQWTFLSG5HVmt4SmM4" ^
+  "NWdOa3dZSTlTWTJSSFh0dmxuM3pzNXdJVE5yZG9zcUVYZWFJa1ZZ" ^
+  "QkVoYmhOdTU0cHAza3hvNlR1V0xpOWU2cFhlV2V0RXdtbEJ3dFda" ^
+  "bFBvaWIyajNUeExCa3NLWmZveUZ5ZWszODBtSGdKQXVtUV9JMmZq" ^
+  "ajk4Xzk3bWszaWhPWTRBZ1ZkQ0RqMXpfR0NvWmtHNVJxN25iQ0d5" ^
+  "b3N5S1d5RFgwMFpzLW5OcVZob0xlSXZYQzRubldkSk1aNnJvZ3h5" ^
+  "UVEifSwibm9uY2UiOiJub25jZSJ9"
+
+let expected_payload = "eyJNc2ciOiJIZWxsbyBKV1MifQ"
+
+let expected_signature =
+  "eAGUikStX_UxyiFhxSLMyuyBcIB80GeBkFROCpap2sW3EmkU_ggF" ^
+  "knaQzxrTfItICSAXsCLIquZ5BbrSWA_4vdEYrwWtdUj7NqFKjHRa" ^
+  "zpLHcoR7r1rEHvkoP1xj49lS5fc3Wjjq8JUhffkhGbWZ8ZVkgPdC" ^
+  "4tMBWiQDoth-x8jELP_3LYOB_ScUXi2mETBawLgOT2K8rA0Vbbmx" ^
+  "hWNlOWuUf-8hL5YX4IOEwsS8JK_TrTq5Zc9My0zHJmaieqDV0UlP" ^
+  "k0onFjPFkGm7MrPSgd0MqRG-4vSAg2O4hDo7rKv4n8POjjXlNQvM" ^
+  "9IPLr8qZ7usYBKhEGwX3yq_eicAwBw"
+
 let jws_encode_somedata () =
   let maybe_key = X509.Encoding.Pem.Private_key.of_pem_cstruct testkey_pem in
   let priv_key = match maybe_key with
@@ -40,50 +64,23 @@ let jws_encode_somedata () =
     | _ -> raise End_of_file in
   let data  = {|{"Msg":"Hello JWS"}|} in
   let nonce = "nonce" in
-  let jws = Jws.encode priv_key data nonce |> Json.from_string in
-  jws
+  Jws.encode priv_key data nonce |> Json.from_string
 
-let test_protected test_ctx =
+let test_member member expected test_ctx =
   let jws = jws_encode_somedata () in
-  let expected =
-      "eyJhbGciOiJSUzI1NiIsImp3ayI6eyJlIjoiQVFBQiIsImt0eSI6" ^
-      "IlJTQSIsIm4iOiI0eGdaM2VSUGt3b1J2eTdxZVJVYm1NRGUwVi14" ^
-      "SDllV0xkdTBpaGVlTGxybUQybXFXWGZQOUllU0tBcGJuMzRnOFR1" ^
-      "QVM5ZzV6aHE4RUxRM2ttanItS1Y4NkdBTWdJNlZBY0dscTNRcnpw" ^
-      "VENmXzMwQWI3LXphd3JmUmFGT05hMUh3RXpQWTFLSG5HVmt4SmM4" ^
-      "NWdOa3dZSTlTWTJSSFh0dmxuM3pzNXdJVE5yZG9zcUVYZWFJa1ZZ" ^
-      "QkVoYmhOdTU0cHAza3hvNlR1V0xpOWU2cFhlV2V0RXdtbEJ3dFda" ^
-      "bFBvaWIyajNUeExCa3NLWmZveUZ5ZWszODBtSGdKQXVtUV9JMmZq" ^
-      "ajk4Xzk3bWszaWhPWTRBZ1ZkQ0RqMXpfR0NvWmtHNVJxN25iQ0d5" ^
-      "b3N5S1d5RFgwMFpzLW5OcVZob0xlSXZYQzRubldkSk1aNnJvZ3h5" ^
-      "UVEifSwibm9uY2UiOiJub25jZSJ9" in
-  match Json.Util.member "protected" jws with
-    | `String got -> assert_equal got expected
-    | _ -> assert_failure "Cannot get field \"protected\"."
+  match Json.Util.member member jws with
+    | `String protected -> assert_equal protected expected
+    | _ ->
+       let errmsg = Printf.sprintf "Cannot get field \"%s\"." member in
+       assert_failure errmsg
 
-let test_payload test_ctx =
-  let jws = jws_encode_somedata () in
-  let expected = "eyJNc2ciOiJIZWxsbyBKV1MifQ" in
-  match Json.Util.member "payload" jws with
-  | `String got -> assert_equal got expected
-  | _ -> assert_failure "Cannot get field \"payload\"."
+let test_encode_protected = test_member "protected" expected_protected
+let test_encode_payload = test_member "payload" expected_payload
+let test_encode_signature = test_member "signature" expected_signature
 
-let test_signature test_ctx =
-  let jws = jws_encode_somedata () in
-  let expected =
-    "eAGUikStX_UxyiFhxSLMyuyBcIB80GeBkFROCpap2sW3EmkU_ggF" ^
-    "knaQzxrTfItICSAXsCLIquZ5BbrSWA_4vdEYrwWtdUj7NqFKjHRa" ^
-    "zpLHcoR7r1rEHvkoP1xj49lS5fc3Wjjq8JUhffkhGbWZ8ZVkgPdC" ^
-    "4tMBWiQDoth-x8jELP_3LYOB_ScUXi2mETBawLgOT2K8rA0Vbbmx" ^
-    "hWNlOWuUf-8hL5YX4IOEwsS8JK_TrTq5Zc9My0zHJmaieqDV0UlP" ^
-    "k0onFjPFkGm7MrPSgd0MqRG-4vSAg2O4hDo7rKv4n8POjjXlNQvM" ^
-    "9IPLr8qZ7usYBKhEGwX3yq_eicAwBw" in
-  match Json.Util.member "signature" jws with
-  | `String got -> assert_equal got expected
-  | _ -> assert_failure "Cannot get field \"signature\"."
 
 let all_tests = [
-    "test_protected" >:: test_protected;
-    "test_payload" >:: test_payload;
-    "test_signature" >:: test_signature
+    "test_encode_protected" >:: test_encode_protected;
+    "test_encode_payload" >:: test_encode_payload;
+    "test_encode_signature" >:: test_encode_signature
   ]
