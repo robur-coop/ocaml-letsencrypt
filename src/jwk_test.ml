@@ -1,25 +1,24 @@
 open Nocrypto
 open OUnit2
 
-let pub_key =
-  let n =
-    let n64 =
-      "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86" ^
-      "zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5" ^
-      "JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQ" ^
-      "MicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyr" ^
-      "dkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF4" ^
-      "4-csFCur-kEgU8awapJzKnqDKgw" in
-    B64u.urldecodez n64 in
-  let e =
-    let e64 = "AQAB" in
-    B64u.urldecodez e64 in
-  Rsa.{n=n; e=e}
+let n64 =
+  "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86" ^
+  "zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5" ^
+  "JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQ" ^
+  "MicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyr" ^
+  "dkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF4" ^
+  "4-csFCur-kEgU8awapJzKnqDKgw"
+let n = B64u.urldecodez n64
+
+let e64 = "AQAB"
+let e = B64u.urldecodez e64
+
+let pub_key = Rsa.{n=n; e=e}
 
 
 let test_encode text_ctx =
   let got = Jwk.encode pub_key in
-  let expected = {|{"e":"AQAB","kty":"RSA","n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw"}|} in
+  let expected = Printf.sprintf {|{"e":"%s","kty":"RSA","n":"%s"}|} e64 n64 in
   assert_equal got expected
 
 let test_thumbprint test_ctx =
@@ -27,7 +26,24 @@ let test_thumbprint test_ctx =
   let expected = "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs" in
   assert_equal got expected
 
+let decode_example =
+  let maybe_pub = Printf.sprintf {|{"e":"%s","kty":"RSA","n":"%s"}|} e64 n64
+                  |> Jwk.decode in
+  match maybe_pub with
+  | Some pub -> pub
+  | None     -> assert_failure "Error decoding."
+
+let test_decode_e text_ctx =
+  let pub = decode_example in
+  assert_equal pub.Rsa.e e
+
+let test_decode_n text_ctx =
+  let pub = decode_example in
+  assert_equal pub.Rsa.n n
+
 let all_tests = [
-      "test_encode">:: test_encode;
-      "test_thumbprint">:: test_thumbprint;
+      "test_encode" >:: test_encode;
+      "test_thumbprint" >:: test_thumbprint;
+      "test_decode_e" >:: test_decode_e;
+      "test_decode_n" >:: test_decode_n;
   ]
