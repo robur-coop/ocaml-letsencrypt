@@ -1,4 +1,5 @@
 open OUnit2
+open Nocrypto
 
 module Json = Yojson.Basic
 
@@ -56,12 +57,14 @@ let expected_signature =
   "k0onFjPFkGm7MrPSgd0MqRG-4vSAg2O4hDo7rKv4n8POjjXlNQvM" ^
   "9IPLr8qZ7usYBKhEGwX3yq_eicAwBw"
 
-let jws_encode_somedata () =
+let rsa_key () =
   let maybe_key = X509.Encoding.Pem.Private_key.of_pem_cstruct testkey_pem in
-  let priv_key = match maybe_key with
+  match maybe_key with
     | [`RSA skey] -> skey
-    (* XXX: more appropriate exception? This code is never executed anyway. *)
-    | _ -> raise End_of_file in
+    | _ -> raise (Failure "Unable to parse test RSA key.")
+
+let jws_encode_somedata () =
+  let priv_key = rsa_key () in
   let data  = {|{"Msg":"Hello JWS"}|} in
   let nonce = "nonce" in
   Jws.encode priv_key data nonce |> Json.from_string
@@ -78,9 +81,38 @@ let test_encode_protected = test_member "protected" expected_protected
 let test_encode_payload = test_member "payload" expected_payload
 let test_encode_signature = test_member "signature" expected_signature
 
+let test_decode_null test_ctx =
+  assert_equal (Jws.decode "{}") None
+
+let jws_decode_somedata () =
+  let data = Printf.sprintf
+              {|{"protected": "%s", "payload": "%s", "signature": "%s"}|}
+              expected_protected expected_payload expected_signature in
+  Jws.decode_unsafe data
+
+let test_decode_rsakey text_ctx =
+  let jws = jws_decode_somedata () in
+  let key = rsa_key () in
+  match jws with
+  | None -> assert_failure "Failed to parse decoding string."
+  | Some (pub, payload) ->
+     assert_equal pub (Rsa.pub_of_priv key)
+
+(* XXX. at this stage we probably wont the expected payload to be on some
+ * global variable. *)
+let test_decode_payload text_ctx =
+  let jws = jws_decode_somedata () in
+  match jws with
+  | None -> assert_failure "Failed to parse decoding string."
+  | Some (pub, payload) ->
+     assert_equal payload {|{"Msg":"Hello JWS"}|}
+
 
 let all_tests = [
     "test_encode_protected" >:: test_encode_protected;
     "test_encode_payload" >:: test_encode_payload;
-    "test_encode_signature" >:: test_encode_signature
+    "test_edincode_signature" >:: test_encode_signature;
+
+    "test_decode_null" >:: test_decode_null;
+    "test_decode_rsakey" >:: test_decode_rsakey;
   ]
