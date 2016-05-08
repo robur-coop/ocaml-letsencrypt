@@ -1,11 +1,10 @@
-open Nocrypto
-
 module Json = Yojson.Basic
 
-let encode (key: Rsa.pub) =
-  let e = B64u.urlencodez key.Rsa.e in
-  let n = B64u.urlencodez key.Rsa.n in
-  Printf.sprintf {|{"e":"%s","kty":"RSA","n":"%s"}|} e n
+let encode key =
+  let e, n = Primitives.pub_to_z key in
+  Printf.sprintf {|{"e":"%s","kty":"RSA","n":"%s"}|}
+                 (B64u.urlencodez e)
+                 (B64u.urlencodez n)
 
 let decode data =
   let j = Json.from_string data in
@@ -15,11 +14,11 @@ let decode data =
      * Instead, we should return None. *)
     let e = Json.Util.member "e" j |> Json.Util.to_string |> B64u.urldecodez in
     let n = Json.Util.member "n" j |> Json.Util.to_string |> B64u.urldecodez in
-    Some Rsa.{e=e; n=n}
+    Some (Primitives.pub_of_z e n)
   else
     None
 
 let thumbprint pub_key =
   let jwk = encode pub_key |> Cstruct.of_string in
-  let h = Hash.SHA256.digest jwk |> Cstruct.to_string in
+  let h = Primitives.hash jwk |> Cstruct.to_string in
   B64u.urlencode h

@@ -3,12 +3,12 @@ open Cohttp_lwt_unix
 open Lwt
 open Nocrypto
 
-module Pem = X509.Encoding.Pem
 module Json = Yojson.Basic
+module Pem = X509.Encoding.Pem
 
 type client_t = {
     ca: string;
-    account_key: Rsa.priv;
+    account_key: Primitives.priv;
     csr:  X509.CA.signing_request;
     mutable next_nonce: string;
   }
@@ -60,10 +60,10 @@ let new_nonce from =
     extract_nonce headers
 
 let new_cli ?(ca="https://acme-v01.api.letsencrypt.org") rsa_pem csr_pem =
-  let maybe_rsa = Pem.Private_key.of_pem_cstruct rsa_pem in
+  let maybe_rsa = Primitives.priv_of_pem rsa_pem in
   let maybe_csr = Pem.Certificate_signing_request.of_pem_cstruct csr_pem in
   match maybe_rsa, maybe_csr with
-    | [`RSA key], [csr] ->
+    | Some key, [csr] ->
        new_nonce ca >>= fun nonce ->
        `Ok {account_key=key; csr=csr; ca=ca; next_nonce=nonce} |> return
     | _ ->

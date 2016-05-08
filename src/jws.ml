@@ -1,26 +1,7 @@
-open Nocrypto
-
-
 module Json = Yojson.Basic
 
-let sign priv data =
-  let h = Hash.SHA256.digest data in
-  let pkcs1_digest = X509.Encoding.pkcs1_digest_info_to_cstruct (`SHA256, h) in
-  Rsa.PKCS1.sig_encode priv pkcs1_digest
-
-let verify pub data signature =
-  let maybe_pkcs1_digest = Rsa.PKCS1.sig_decode pub signature in
-  match maybe_pkcs1_digest with
-  | Some pkcs1_digest ->
-     begin
-       match X509.Encoding.pkcs1_digest_info_of_cstruct  pkcs1_digest with
-       | Some (`SHA256, hash) -> hash = Hash.SHA256.digest data
-       | _  -> false
-     end
-  | _ -> false
-
 let encode priv data nonce =
-  let pub = Rsa.pub_of_priv priv in
+  let pub = Primitives.pub_of_priv priv in
   let jwk = Jwk.encode pub in
   let protected =
     Printf.sprintf {|{"alg":"RS256","jwk":%s,"nonce":"%s"}|}
@@ -29,7 +10,7 @@ let encode priv data nonce =
   let payload = B64u.urlencode data in
   let signature =
     let m = Cstruct.of_string (protected ^ "." ^ payload) in
-    sign priv m |> Cstruct.to_string |> B64u.urlencode in
+    Primitives.sign priv m |> Cstruct.to_string |> B64u.urlencode in
   Printf.sprintf {|{"protected": "%s", "payload": "%s", "signature": "%s"}|}
                  protected payload signature
 
@@ -60,7 +41,7 @@ let decode_unsafe data =
   | Some pub ->
      let m = Cstruct.of_string (protected64 ^ "." ^ payload64) in
      (* here we should reprocess to remove spaces *)
-     if verify pub m signature then
+     if Primitives.verify pub m signature then
        Some (pub, payload)
      else
        None
