@@ -115,4 +115,5 @@ let all_tests = [
 
     "test_decode_null" >:: test_decode_null;
     "test_decode_rsakey" >:: test_decode_rsakey;
+    "test_decode_payload" >:: test_decode_payload;
   ]
