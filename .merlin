@@ -6,6 +6,7 @@ PKG base64
 PKG cmdliner
 PKG cohttp
 PKG dispatch
+PKG logs
 PKG lwt
 PKG nocrypto
 PKG oUnit

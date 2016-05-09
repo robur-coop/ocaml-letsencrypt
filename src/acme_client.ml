@@ -91,8 +91,8 @@ let new_reg cli =
    * However, it seems for a simple client this information is not necessary.
    * Also, in a bright future these prints should be transformed in logs.*)
   match code with
-  | 201 -> print_endline "Account created."; return_nil
-  | 409 -> print_endline "Already registered."; return_nil
+  | 201 -> Logs.info (fun m -> m "Account created."); return_nil
+  | 409 -> Logs.info (fun m -> m "Already registered."); return_nil
   | _   ->
      let err_msg = Printf.sprintf "Error: shit happened in registration. Error code %d; body %s"
                                   code body in

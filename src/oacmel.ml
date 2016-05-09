@@ -42,6 +42,8 @@ let info =
   Term.info "oacmel" ~version:"0.1" ~doc ~man
 
 let () =
+  Logs.set_reporter (Logs_fmt.reporter ());
+  Logs.set_level (Some Logs.Info);
   let acme_client_t = Term.(const main $ rsa_pem_arg $ csr_pem_arg) in
   match Term.eval (acme_client_t, info) with
   | `Error _ -> exit 1

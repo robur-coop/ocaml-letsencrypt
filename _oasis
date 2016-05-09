@@ -12,7 +12,7 @@ Executable "oacmel"
   MainIs: oacmel.ml
   CompiledObject: native
   BuildDepends: x509, cohttp, yojson, lwt, cohttp.lwt, base64, pkg_cohttp,
-                nocrypto.lwt, zarith, cmdliner
+                nocrypto.lwt, zarith, cmdliner, logs, logs.fmt
 
 Executable "acme_server"
   Path: src
@@ -26,4 +26,4 @@ Executable "test"
   MainIs: tests.ml
   CompiledObject: native
   BuildDepends: x509, cohttp, yojson, lwt, cohttp.lwt, base64, pkg_cohttp,
-                nocrypto.lwt, zarith, oUnit
+                nocrypto.lwt, zarith, oUnit, logs, logs.fmt
