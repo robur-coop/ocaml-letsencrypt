@@ -7,33 +7,28 @@ open Nocrypto
 module Json = Yojson.Basic
 
 open Dispatch
+open Acme_common
 
 let ca = "http://localhost:8080/"
 let path_directory = "directory"
-
-type directory_t = {
-    directory   : string;
-    root        : string;
-    new_authz   : string;
-    new_reg     : string;
-    new_cert    : string;
-    revoke_cert : string;
-  }
 
 type t = {
     port : int;
     dir  : directory_t;
   }
 
-let new_server root port =
-  let dir = {
-    root        = root;
+let new_directory root = {
+    root;
     directory   = "/directory";
     new_authz   = "/acme/new-authz";
     new_reg     = "/acme/new-reg";
     new_cert    = "/acme/new-cert";
     revoke_cert = "/acme/revoke-cert";
-    } in
+  }
+
+
+let new_server root port =
+  let dir = new_directory root in
   let s = {
       dir     = dir;
       port    = port;
@@ -66,9 +61,9 @@ let notfound_handler uri =
 let serve s request =
   let path = Request.uri request |> Uri.path in
   let table = [
-      "/"            , index_handler
-    ; s.dir.directory    , directory_handler
-    ; s.dir.new_reg      , new_reg_handler
+      "/", index_handler
+    ; s.dir.directory, directory_handler
+    ; s.dir.new_reg, new_reg_handler
     ]
   in
   match DSL.dispatch table path with

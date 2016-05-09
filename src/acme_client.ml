@@ -3,20 +3,23 @@ open Cohttp_lwt_unix
 open Lwt
 open Nocrypto
 
+open Acme_common
+
 module Json = Yojson.Basic
 module Pem = X509.Encoding.Pem
 
 type client_t = {
-    ca: string;
     account_key: Primitives.priv;
     csr:  X509.CA.signing_request;
     mutable next_nonce: string;
+    d: directory_t;
   }
 
 type challenge_t = {
     uri: string;
     token: string;
   }
+
 
 (** I guess for now we can leave a function here of type
  * bytes -> bytes -> unit
@@ -42,11 +45,6 @@ let http_post_jws key nonce data url =
   let url = Uri.of_string url in
   Client.post ~body:body ~headers:header url
 
-let discover ca =
-  let url = ca ^ "/directory" in
-  http_get url >>= fun (code, headers, body) ->
-  Lwt.return (headers, body)
-
 let get_header_or_fail name headers =
   match Header.get headers name with
   | Some nonce -> return nonce
@@ -55,19 +53,32 @@ let get_header_or_fail name headers =
 let extract_nonce =
   get_header_or_fail "Replay-Nonce"
 
-let new_nonce from =
-    discover from >>= fun (headers, body) ->
-    extract_nonce headers
+let discover directory_url =
+  http_get directory_url >>= fun (code, headers, body) ->
+  extract_nonce headers  >>= fun nonce ->
+  let directory =
+    let dir = Json.from_string body in
+    let member m = Json.Util.member m dir |> Json.Util.to_string in
+    {
+      root = "";
+      directory = directory_url;
+      new_authz = member "new-authz";
+      new_reg = member "new-reg";
+      new_cert = member "new-cert";
+      revoke_cert = member "revoke-cert";
+    }
+  in
+  Lwt.return (nonce, directory)
 
-let new_cli ?(ca="https://acme-v01.api.letsencrypt.org") rsa_pem csr_pem =
+let new_cli ?(directory_url="https://acme-v01.api.letsencrypt.org/directory") rsa_pem csr_pem =
   let maybe_rsa = Primitives.priv_of_pem rsa_pem in
   let maybe_csr = Pem.Certificate_signing_request.of_pem_cstruct csr_pem in
   match maybe_rsa, maybe_csr with
-    | Some account_key, [csr] ->
-       new_nonce ca >>= fun next_nonce ->
-       `Ok {account_key; csr; ca; next_nonce} |> return
-    | _ ->
-       fail_with "Error: there's a problem paring those pem files."
+  | Some account_key, [csr] ->
+     discover directory_url >>= fun (next_nonce, d)  ->
+       `Ok {account_key; csr; next_nonce; d} |> return
+  | _ ->
+     fail_with "Error: there's a problem paring those pem files."
 
 let cli_recv = http_get
 
@@ -82,7 +93,7 @@ let cli_send cli data url =
   return (code, headers, body)
 
 let new_reg cli =
-  let url = cli.ca ^ "/acme/new-reg" in
+  let url = cli.d.new_reg in
   let body =
     {|{"resource": "new-reg", "agreement": "https://letsencrypt.org/documents/LE-SA-v1.0.1-July-27-2015.pdf"}|}
   in
@@ -118,7 +129,7 @@ let do_http01_challenge cli challenge =
   return_nil
 
 let new_authz cli domain =
-  let url = cli.ca ^ "/acme/new-authz" in
+  let url = cli.d.new_authz in
   let body = Printf.sprintf
     {|{"resource": "new-authz", "identifier": {"type": "dns", "value": "%s"}}|}
     domain in
@@ -148,7 +159,7 @@ let pool_challenge_status cli challenge =
 
 let new_cert cli =
   (* formulate the request *)
-  let url = cli.ca ^ "/acme/new-cert" in
+  let url = cli.d.new_cert in
   let der = X509.Encoding.cs_of_signing_request cli.csr |> Cstruct.to_string |> B64u.urlencode in
   let data = Printf.sprintf {|{"resource": "new-cert", "csr": "%s"}|} der in
   cli_send cli data url >>= fun (code, headers, body) ->
