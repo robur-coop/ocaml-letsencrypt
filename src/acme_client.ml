@@ -63,9 +63,9 @@ let new_cli ?(ca="https://acme-v01.api.letsencrypt.org") rsa_pem csr_pem =
   let maybe_rsa = Primitives.priv_of_pem rsa_pem in
   let maybe_csr = Pem.Certificate_signing_request.of_pem_cstruct csr_pem in
   match maybe_rsa, maybe_csr with
-    | Some key, [csr] ->
-       new_nonce ca >>= fun nonce ->
-       `Ok {account_key=key; csr=csr; ca=ca; next_nonce=nonce} |> return
+    | Some account_key, [csr] ->
+       new_nonce ca >>= fun next_nonce ->
+       `Ok {account_key; csr; ca; next_nonce} |> return
     | _ ->
        fail_with "Error: there's a problem paring those pem files."
 
@@ -106,7 +106,7 @@ let get_http01_challenge authorization =
   | challenge :: _ ->
      let token = Json.Util.member "token" challenge |> Json.Util.to_string in
      let uri = Json.Util.member "uri" challenge |> Json.Util.to_string in
-     return {token=token; uri=uri}
+     return {token; uri}
 
 let do_http01_challenge cli challenge =
   let token = challenge.token in
