@@ -17,14 +17,15 @@ type t = {
     dir  : directory_t;
   }
 
-let new_directory root = {
-    root;
-    directory   = "/directory";
-    new_authz   = "/acme/new-authz";
-    new_reg     = "/acme/new-reg";
-    new_cert    = "/acme/new-cert";
-    revoke_cert = "/acme/revoke-cert";
-  }
+let new_directory root =
+    let u path = root ^ path |> Uri.of_string in
+    {
+      directory   = u "/directory";
+      new_authz   = u "/acme/new-authz";
+      new_reg     = u "/acme/new-reg";
+      new_cert    = u "/acme/new-cert";
+      revoke_cert = u "/acme/revoke-cert";
+    }
 
 
 let new_server root port =
@@ -40,7 +41,7 @@ let index_handler keys rest s request =
   Server.respond_string ~status:`OK ~body ()
 
 let directory_handler keys rest s request =
-  let p = (^) s.dir.root in
+  let p = Uri.to_string in
   let body = Printf.sprintf
                {|{"new-authz": "%s", "new-cert": "%s", "new-reg": "%s", "revoke-cert": "%s"}|}
                (p s.dir.new_authz)
@@ -61,9 +62,9 @@ let notfound_handler uri =
 let serve s request =
   let path = Request.uri request |> Uri.path in
   let table = [
-      "/", index_handler
-    ; s.dir.directory, directory_handler
-    ; s.dir.new_reg, new_reg_handler
+      "/",                      index_handler;
+      Uri.path s.dir.directory, directory_handler;
+      Uri.path s.dir.new_reg,   new_reg_handler;
     ]
   in
   match DSL.dispatch table path with

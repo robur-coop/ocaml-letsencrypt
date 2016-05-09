@@ -31,7 +31,7 @@ let main rsa_pem csr_pem  =
        Lwt.return body
   in
   let message = Lwt_main.run get_crt in
-  print_endline message.token; print_endline message.uri
+  print_endline message.token; print_endline (Uri.to_string message.url)
 
 let info =
   let doc = "just another ACME client" in

@@ -16,7 +16,7 @@ type client_t = {
   }
 
 type challenge_t = {
-    uri: string;
+    url: Uri.t;
     token: string;
   }
 
@@ -30,7 +30,7 @@ let write_string filename data =
   close_out oc
 
 let http_get url =
-  Client.get (Uri.of_string url) >>= fun (resp, body) ->
+  Client.get url >>= fun (resp, body) ->
   let code = resp |> Response.status |> Code.code_of_status in
   let headers = resp |> Response.headers in
   body |> Cohttp_lwt_body.to_string >>= fun body ->
@@ -54,13 +54,13 @@ let extract_nonce =
   get_header_or_fail "Replay-Nonce"
 
 let discover directory_url =
+  let directory_url = Uri.of_string directory_url in
   http_get directory_url >>= fun (code, headers, body) ->
   extract_nonce headers  >>= fun nonce ->
   let directory =
     let dir = Json.from_string body in
-    let member m = Json.Util.member m dir |> Json.Util.to_string in
+    let member m = Json.Util.member m dir |> Json.Util.to_string |> Uri.of_string in
     {
-      root = "";
       directory = directory_url;
       new_authz = member "new-authz";
       new_reg = member "new-reg";
@@ -83,6 +83,7 @@ let new_cli ?(directory_url="https://acme-v01.api.letsencrypt.org/directory") rs
 let cli_recv = http_get
 
 let cli_send cli data url =
+  let url = Uri.to_string url in
   http_post_jws cli.account_key cli.next_nonce data url >>= fun (resp, body) ->
   let code = resp |> Response.status |> Code.code_of_status in
   let headers = resp |> Response.headers in
@@ -116,8 +117,8 @@ let get_http01_challenge authorization =
   | []  -> fail_with "No supported challenges found."
   | challenge :: _ ->
      let token = Json.Util.member "token" challenge |> Json.Util.to_string in
-     let uri = Json.Util.member "uri" challenge |> Json.Util.to_string in
-     return {token; uri}
+     let url = Json.Util.member "uri" challenge |> Json.Util.to_string |> Uri.of_string in
+     return {token; url}
 
 let do_http01_challenge cli challenge =
   let token = challenge.token in
@@ -146,10 +147,10 @@ let challenge_met cli challenge =
   let data =
     Printf.sprintf {|{"resource": "challenge", "keyAuthorization": "%s"}|}
                    key_authorization in
-  cli_send cli data challenge.uri
+  cli_send cli data challenge.url
 
 let pool_challenge_status cli challenge =
-  cli_recv challenge.uri >>= fun (code, headers, body) ->
+  cli_recv challenge.url >>= fun (code, headers, body) ->
   let challenge_status = Json.from_string body in
   let status = Json.Util.member "status" challenge_status |> Json.Util.to_string in
   match status with

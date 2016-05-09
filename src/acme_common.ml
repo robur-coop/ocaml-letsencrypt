@@ -1,8 +1,7 @@
 type directory_t = {
-    directory   : string;
-    root        : string;
-    new_authz   : string;
-    new_reg     : string;
-    new_cert    : string;
-    revoke_cert : string;
+    directory   : Uri.t;
+    new_authz   : Uri.t;
+    new_reg     : Uri.t;
+    new_cert    : Uri.t;
+    revoke_cert : Uri.t;
   }
