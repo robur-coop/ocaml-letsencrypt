@@ -13,7 +13,7 @@ let n = B64u.urldecodez n64
 let e64 = "AQAB"
 let e = B64u.urldecodez e64
 
-let pub_key = Rsa.{n=n; e=e}
+let pub_key = Rsa.{n; e}
 
 
 let test_encode text_ctx =
