@@ -6,17 +6,24 @@ let encode key =
                  (B64u.urlencodez e)
                  (B64u.urlencodez n)
 
-let decode data =
-  let j = Json.from_string data in
-  let kty = Json.Util.member "kty" j |> Json.Util.to_string in
-  if kty = "RSA" then
-    (* XXX. here we fail immediately if keys are not valid.
-     * Instead, we should return None. *)
+let decode_rsa j =
+  try
     let e = Json.Util.member "e" j |> Json.Util.to_string |> B64u.urldecodez in
     let n = Json.Util.member "n" j |> Json.Util.to_string |> B64u.urldecodez in
     Some (Primitives.pub_of_z e n)
-  else
-    None
+  with Json.Util.Type_error _ -> None
+
+let decode data =
+  try
+    let j = Json.from_string data in
+    let kty = Json.Util.member "kty" j |> Json.Util.to_string in
+    match kty with
+    | "RSA" -> decode_rsa j
+    | _ -> None
+  with
+  | Json.Util.Type_error _
+  | Yojson.Json_error _ -> None
+
 
 let thumbprint pub_key =
   let jwk = encode pub_key |> Cstruct.of_string in

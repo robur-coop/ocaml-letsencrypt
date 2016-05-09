@@ -41,9 +41,28 @@ let test_decode_n text_ctx =
   let pub = decode_example in
   assert_equal pub.Rsa.n n
 
+let test_decode_badformed test_ctx =
+  let s = "{" in
+  assert_equal (Jwk.decode s) None
+
+let test_decode_invalid_n test_ctx =
+  let s = {|{"kty": "RSA", "e": "AQAB"}|} in
+  assert_equal (Jwk.decode s) None
+
+let test_decode_invalid_e test_ctx =
+  let s = {|{"kty": "RSA", "e": 1}|} in
+  assert_equal (Jwk.decode s) None
+
+let test_decode_invalid_kty test_ctx =
+  let s = {|{"kty": "invalid"}|} in
+  assert_equal (Jwk.decode s) None
+
 let all_tests = [
       "test_encode" >:: test_encode;
       "test_thumbprint" >:: test_thumbprint;
       "test_decode_e" >:: test_decode_e;
       "test_decode_n" >:: test_decode_n;
+      "test_decode_invalid_kty" >:: test_decode_invalid_kty;
+      "test_decode_invalid_e" >:: test_decode_invalid_e;
+      "test_decode_invalid_n" >:: test_decode_invalid_n;
   ]
