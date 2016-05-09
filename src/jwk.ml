@@ -16,12 +16,10 @@ let decode_rsa j =
 let decode data =
   try
     let j = Json.from_string data in
-    let kty = Json.Util.member "kty" j |> Json.Util.to_string in
-    match kty with
-    | "RSA" -> decode_rsa j
+    match Json.Util.member "kty" j with
+    | `String "RSA" -> decode_rsa j
     | _ -> None
   with
-  | Json.Util.Type_error _
   | Yojson.Json_error _ -> None
 
 
