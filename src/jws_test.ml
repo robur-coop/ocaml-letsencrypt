@@ -90,13 +90,14 @@ let jws_decode_somedata () =
               expected_protected expected_payload expected_signature in
   Jws.decode data
 
-(* let test_decode_rsakey text_ctx = *)
-(*   let jws = jws_decode_somedata () in *)
-(*   let key = rsa_key () in *)
-(*   match jws with *)
-(*   | None -> assert_failure "Failed to parse decoding string." *)
-(*   | Some (pub, payload) -> *)
-(*      assert_equal pub (Rsa.pub_of_priv key) *)
+let test_decode_rsakey text_ctx =
+  let jws = jws_decode_somedata () in
+  let key = rsa_key () in
+  match jws with
+  | None -> assert_failure "Failed to parse decoding string."
+  | Some (protected, payload) ->
+     let pub = Primitives.pub_of_priv key in
+     assert_equal protected.Jws.jwk (`Rsa pub)
 
 (* XXX. at this stage we probably wont the expected payload to be on some
  * global variable. *)
@@ -104,7 +105,7 @@ let test_decode_payload text_ctx =
   let jws = jws_decode_somedata () in
   match jws with
   | None -> assert_failure "Failed to parse decoding string."
-  | Some payload ->
+  | Some (_, payload) ->
      assert_equal payload {|{"Msg":"Hello JWS"}|}
 
 
@@ -114,6 +115,6 @@ let all_tests = [
     "test_edincode_signature" >:: test_encode_signature;
 
     "test_decode_null" >:: test_decode_null;
-    (* "test_decode_rsakey" >:: test_decode_rsakey; *)
+    "test_decode_rsakey" >:: test_decode_rsakey;
     "test_decode_payload" >:: test_decode_payload;
   ]

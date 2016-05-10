@@ -1,3 +1,5 @@
+type key_t = [`Null | `Rsa of Primitives.pub]
+
 let encode key =
   let e, n = Primitives.pub_to_z key in
   Printf.sprintf {|{"e":"%s","kty":"RSA","n":"%s"}|}
@@ -5,8 +7,8 @@ let encode key =
                  (B64u.urlencodez n)
 
 let thumbprint pub_key =
-  let jwk = encode pub_key |> Cstruct.of_string in
-  let h = Primitives.hash jwk |> Cstruct.to_string in
+  let jwk = encode pub_key in
+  let h = Primitives.sha256 jwk in
   B64u.urlencode h
 
 
@@ -16,7 +18,6 @@ let decode_rsa j =
   match maybe_e, maybe_n with
   | Some e, Some n ->  `Rsa (Primitives.pub_of_z e n)
   | _, _ -> `Null
-
 
 let decode_json json =
   match Json.string_member "kty" json with

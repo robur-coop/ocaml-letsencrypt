@@ -16,12 +16,13 @@ let pub_of_priv = Rsa.pub_of_priv
 let pub_of_z e n = Rsa.{e; n}
 let pub_to_z (key: pub) = Rsa.(key.e, key.n)
 
-let sign priv data =
+let rs256_sign priv data =
+  let data = Cstruct.of_string data in
   let h = Hash.SHA256.digest data in
   let pkcs1_digest = X509.Encoding.pkcs1_digest_info_to_cstruct (`SHA256, h) in
-  Rsa.PKCS1.sig_encode priv pkcs1_digest
+  Rsa.PKCS1.sig_encode priv pkcs1_digest |> Cstruct.to_string
 
-let verify pub data signature =
+let rs256_verify pub data signature =
   let maybe_pkcs1_digest = Rsa.PKCS1.sig_decode pub signature in
   match maybe_pkcs1_digest with
   | Some pkcs1_digest ->
@@ -32,4 +33,4 @@ let verify pub data signature =
      end
   | _ -> false
 
-let hash = Hash.SHA256.digest
+let sha256 x = x |> Cstruct.of_string |> Hash.SHA256.digest |> Cstruct.to_string
