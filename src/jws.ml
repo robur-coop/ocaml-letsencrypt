@@ -1,5 +1,3 @@
-module Json = Yojson.Basic
-
 let encode priv data nonce =
   let pub = Primitives.pub_of_priv priv in
   let jwk = Jwk.encode pub in
@@ -14,42 +12,33 @@ let encode priv data nonce =
   Printf.sprintf {|{"protected": "%s", "payload": "%s", "signature": "%s"}|}
                  protected payload signature
 
-(* There are tons of things that are wrong with this function.
- * First of all, we assume the protected header is being sent
- * already lexicographically ordered and without spaces.
- * Then, it's difficult to understand which exceptions might be raised
- * Also, I wonder the current type signature is good. Probably we need to check
- * for the nonce, but probably then also all other headers.
- * Finally, there is a subtle difference between
- * Json.Util.to/from_string and Json.to/from_string and having the two
- * mixed like this doesn't seem a good idea.
- *)
-let decode_unsafe data =
-  let jws = Json.from_string data in
-  let protected64 = Json.Util.member "protected" jws |> Json.Util.to_string in
-  let protected = B64u.urldecode protected64 |> Json.from_string in
-  let payload64 = Json.Util.member "payload" jws |> Json.Util.to_string in
-  let payload = B64u.urldecode payload64 in
-  let jwk = Json.Util.member "jwk" protected |> Json.to_string in
-  let signature = Json.Util.member "signature" jws
-                  |> Json.Util.to_string
-                  |> B64u.urldecode
-                  |> Cstruct.of_string
-  in
-  match Jwk.decode jwk with
-  | None -> None
-  | Some pub ->
-     let m = Cstruct.of_string (protected64 ^ "." ^ payload64) in
-     (* here we should reprocess to remove spaces *)
-     if Primitives.verify pub m signature then
-       Some (pub, payload)
-     else
-       None
+let jws_protected maybe_protected =
+  let header_error = fun m s -> false in
+  match Json.of_string maybe_protected with
+  | None -> header_error
+  | Some protected ->
+     match Json.json_member "jwk" protected with
+     | None -> header_error
+     | Some jwk ->
+        match Jwk.decode_json jwk with
+        | None -> header_error
+        | Some pub -> Primitives.verify pub
+
 
 let decode data =
-  try
-    decode_unsafe data
-  with
-  | Failure _
-  | Json.Util.Type_error _
-  | Yojson.Json_error _ -> None
+  match Json.of_string data with
+  | None -> None
+  | Some jws ->
+     let maybe_protected64 = Json.string_member "protected" jws in
+     let maybe_payload64 = Json.string_member "payload" jws in
+     let maybe_signature = Json.b64_string_member "signature" jws in
+     match maybe_protected64, maybe_payload64, maybe_signature with
+     | Some protected64, Some payload64, Some signature ->
+        let jws_verify = jws_protected (B64u.urldecode protected64) in
+        let m = Cstruct.of_string (protected64 ^ "." ^ payload64) in
+        let signature = Cstruct.of_string signature in
+        if jws_verify m signature then
+          Some (B64u.urldecode payload64)
+        else
+          None
+     | _ -> None
