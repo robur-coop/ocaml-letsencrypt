@@ -42,7 +42,6 @@ let http_post_jws key nonce data url =
   let header = Header.init () in
   let header = Header.add header "Content-Length" body_len in
   let body = Cohttp_lwt_body.of_string body in
-  let url = Uri.of_string url in
   Client.post ~body:body ~headers:header url
 
 let get_header_or_fail name headers =
@@ -83,7 +82,6 @@ let new_cli ?(directory_url="https://acme-v01.api.letsencrypt.org/directory") rs
 let cli_recv = http_get
 
 let cli_send cli data url =
-  let url = Uri.to_string url in
   http_post_jws cli.account_key cli.next_nonce data url >>= fun (resp, body) ->
   let code = resp |> Response.status |> Code.code_of_status in
   let headers = resp |> Response.headers in
