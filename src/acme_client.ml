@@ -175,20 +175,29 @@ let poll_challenge_status cli challenge =
   | "pending" -> return (`Ok true)
   | _ -> return (`Error "I got gibberish while polling for challange status.")
 
+
+let der_to_pem der =
+  let der = Cstruct.of_string der in
+  match X509.Encoding.parse der with
+  | Some crt ->
+     let pem = Pem.Certificate.to_pem_cstruct [crt] |> Cstruct.to_string in
+     `Ok pem
+  | None ->
+     `Error "I got gibberish while trying to decode the new certificate."
+
 let new_cert cli =
   (* formulate the request *)
   let url = cli.d.new_cert in
   let der = X509.Encoding.cs_of_signing_request cli.csr |> Cstruct.to_string |> B64u.urlencode in
   let data = Printf.sprintf {|{"resource": "new-cert", "csr": "%s"}|} der in
   cli_send cli data url >>= fun (code, headers, body) ->
-  (* process the response *)
-  let der = B64u.urldecode body |> Cstruct.of_string in
-  match X509.Encoding.parse der with
-  | Some crt ->
-     let pem = Pem.Certificate.to_pem_cstruct [crt] |> Cstruct.to_string in
-     return (`Ok pem)
-  | None ->
-     return (`Error "I got gibberish while trying to decode the new certificate.")
+  match code with
+  | 201 ->
+     let der = B64u.urldecode body in
+     return (der_to_pem der)
+  | _ ->
+     let msg = Printf.sprintf "code %d; body '%s'" code body in
+     return (`Error msg)
 
 let get_crt rsa_pem csr_pem =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
