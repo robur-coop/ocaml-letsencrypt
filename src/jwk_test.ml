@@ -30,8 +30,8 @@ let decode_example =
   let maybe_pub = Printf.sprintf {|{"e":"%s","kty":"RSA","n":"%s"}|} e64 n64
                   |> Jwk.decode in
   match maybe_pub with
-  | Some pub -> pub
-  | None     -> assert_failure "Error decoding."
+  | `Rsa pub -> pub
+  | `Null    -> assert_failure "Error decoding."
 
 let test_decode_e text_ctx =
   let pub = decode_example in
@@ -43,19 +43,19 @@ let test_decode_n text_ctx =
 
 let test_decode_badformed test_ctx =
   let s = "{" in
-  assert_equal (Jwk.decode s) None
+  assert_equal (Jwk.decode s) `Null
 
 let test_decode_invalid_n test_ctx =
   let s = {|{"kty": "RSA", "e": "AQAB"}|} in
-  assert_equal (Jwk.decode s) None
+  assert_equal (Jwk.decode s) `Null
 
 let test_decode_invalid_e test_ctx =
   let s = {|{"kty": "RSA", "e": 1}|} in
-  assert_equal (Jwk.decode s) None
+  assert_equal (Jwk.decode s) `Null
 
 let test_decode_invalid_kty test_ctx =
   let s = {|{"kty": "invalid"}|} in
-  assert_equal (Jwk.decode s) None
+  assert_equal (Jwk.decode s) `Null
 
 let all_tests = [
       "test_encode" >:: test_encode;

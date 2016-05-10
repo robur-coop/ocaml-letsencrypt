@@ -14,16 +14,16 @@ let decode_rsa j =
   let maybe_e = Json.b64_z_member "e" j in
   let maybe_n = Json.b64_z_member "n" j in
   match maybe_e, maybe_n with
-  | Some e, Some n ->  Some (Primitives.pub_of_z e n)
-  | _, _ -> None
+  | Some e, Some n ->  `Rsa (Primitives.pub_of_z e n)
+  | _, _ -> `Null
 
 
 let decode_json json =
   match Json.string_member "kty" json with
   | Some "RSA" -> decode_rsa json
-  | _ -> None
+  | _ -> `Null
 
 let decode data =
   match Json.of_string data with
   | Some json -> decode_json json
-  | None -> None
+  | None -> `Null

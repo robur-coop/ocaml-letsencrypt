@@ -17,12 +17,16 @@ let jws_protected maybe_protected =
   match Json.of_string maybe_protected with
   | None -> header_error
   | Some protected ->
-     match Json.json_member "jwk" protected with
-     | None -> header_error
-     | Some jwk ->
-        match Jwk.decode_json jwk with
-        | None -> header_error
-        | Some pub -> Primitives.verify pub
+     let maybe_jwk = Json.json_member "jwk" protected in
+     let maybe_alg = Json.string_member "alg" protected in
+     match maybe_jwk, maybe_alg with
+     | Some jwk, Some alg ->
+        begin
+        match alg, Jwk.decode_json jwk with
+        | "RS256", `Rsa pub -> Primitives.verify pub
+        | _ -> header_error
+        end
+     | _ -> header_error
 
 
 let decode data =
