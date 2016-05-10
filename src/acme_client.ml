@@ -34,7 +34,7 @@ let http_get url =
   let code = resp |> Response.status |> Code.code_of_status in
   let headers = resp |> Response.headers in
   body |> Cohttp_lwt_body.to_string >>= fun body ->
-  Lwt.return (code, headers, body)
+  return (code, headers, body)
 
 let http_post_jws key nonce data url =
   let body = Jws.encode key data nonce  in
@@ -68,7 +68,7 @@ let discover directory_url =
       revoke_cert = member "revoke-cert";
     }
   in
-  Lwt.return (nonce, directory)
+  return (nonce, directory)
 
 let new_cli ?(directory_url="https://acme-v01.api.letsencrypt.org/directory") rsa_pem csr_pem =
   let maybe_rsa = Primitives.priv_of_pem rsa_pem in
@@ -76,9 +76,9 @@ let new_cli ?(directory_url="https://acme-v01.api.letsencrypt.org/directory") rs
   match maybe_rsa, maybe_csr with
   | Some account_key, [csr] ->
      discover directory_url >>= fun (next_nonce, d)  ->
-       `Ok {account_key; csr; next_nonce; d} |> return
+     `Ok {account_key; csr; next_nonce; d} |> return
   | _ ->
-     fail_with "Error: there's a problem paring those pem files."
+     `Error "Error: there's a problem paring those pem files." |> return
 
 let cli_recv = http_get
 
@@ -96,6 +96,8 @@ let cli_send cli data url =
 let new_reg cli =
   let url = cli.d.new_reg in
   let body =
+    (* XXX. this is letsencrypt specific. Also they are implementing acme-01
+     * so it's a pain to fetch the terms. *)
     {|{"resource": "new-reg", "agreement": "https://letsencrypt.org/documents/LE-SA-v1.0.1-July-27-2015.pdf"}|}
   in
   cli_send cli body url >>= fun (code, headers, body) ->
@@ -103,22 +105,31 @@ let new_reg cli =
    * However, it seems for a simple client this information is not necessary.
    * Also, in a bright future these prints should be transformed in logs.*)
   match code with
-  | 201 -> Logs.info (fun m -> m "Account created."); return_nil
-  | 409 -> Logs.info (fun m -> m "Already registered."); return_nil
+  | 201 -> Logs.info (fun m -> m "Account created.");  return (`Ok ())
+  | 409 -> Logs.info (fun m -> m "Already registered."); return (`Ok ())
   | _   ->
      let err_msg = Printf.sprintf "Error: shit happened in registration. Error code %d; body %s"
                                   code body in
-     fail_with err_msg
+     return (`Error err_msg)
+
+let malformed_json j = Printf.sprintf "malformed json: %s" (Json.to_string j)
 
 let get_http01_challenge authorization =
-  let challenges = Json.Util.member "challenges" authorization |> Json.Util.to_list in
-  let is_http01 c = Json.Util.member "type" c = `String "http-01" in
-  match List.filter is_http01 challenges with
-  | []  -> fail_with "No supported challenges found."
-  | challenge :: _ ->
-     let token = Json.Util.member "token" challenge |> Json.Util.to_string in
-     let url = Json.Util.member "uri" challenge |> Json.Util.to_string |> Uri.of_string in
-     return {token; url}
+  let challenges_list = Json.Util.member "challenges" authorization in
+  match challenges_list with
+  | `List challenges ->
+     begin
+       let is_http01 c = Json.Util.member "type" c = `String "http-01" in
+       match List.filter is_http01 challenges with
+       | []  -> `Error "No supported challenges found."
+       | challenge :: _ ->
+          let token = Json.Util.member "token" challenge in
+          let url = Json.Util.member "uri" challenge in
+          match token, url with
+          | `String t, `String u -> `Ok {token=t; url=Uri.of_string u}
+          | _ -> `Error (malformed_json authorization)
+     end
+  | _ -> `Error (malformed_json authorization)
 
 let do_http01_challenge cli challenge =
   let token = challenge.token in
@@ -127,7 +138,7 @@ let do_http01_challenge cli challenge =
   let path = token in
   let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
   Printf.printf "Now put %s in a file named \"%s\"" key_authorization path;
-  return_nil
+  return (`Ok ())
 
 let new_authz cli domain =
   let url = cli.d.new_authz in
@@ -135,8 +146,14 @@ let new_authz cli domain =
     {|{"resource": "new-authz", "identifier": {"type": "dns", "value": "%s"}}|}
     domain in
   cli_send cli body url >>= fun (code, headers, body) ->
-  let authorization = Json.from_string body in
-  get_http01_challenge authorization
+  match code with
+  | 201 ->
+     let authorization = Json.from_string body in
+     return (get_http01_challenge authorization)
+  (* XXX. any other codes to handle? *)
+  | _ ->
+     let msg = Printf.sprintf "new-authz error: code %d and body: '%s'" code body in
+     return (`Error msg)
 
 let challenge_met cli challenge =
   let token = challenge.token in
@@ -147,16 +164,18 @@ let challenge_met cli challenge =
   let data =
     Printf.sprintf {|{"resource": "challenge", "keyAuthorization": "%s"}|}
                    key_authorization in
-  cli_send cli data challenge.url
+  cli_send cli data challenge.url >>= fun _ ->
+  (* XXX. here we should deal with the resulting codes, at least. *)
+  return (`Ok ())
 
-let pool_challenge_status cli challenge =
+let poll_challenge_status cli challenge =
   cli_recv challenge.url >>= fun (code, headers, body) ->
   let challenge_status = Json.from_string body in
   let status = Json.Util.member "status" challenge_status |> Json.Util.to_string in
   match status with
-  | "valid" -> return_true
-  | "pending" -> return_false
-  | _ -> fail_with "I got gibberish while polling for challange status."
+  | "valid" -> return (`Ok false)
+  | "pending" -> return (`Ok true)
+  | _ -> return (`Error "I got gibberish while polling for challange status.")
 
 let new_cert cli =
   (* formulate the request *)
@@ -169,5 +188,28 @@ let new_cert cli =
   match X509.Encoding.parse der with
   | Some crt ->
      let pem = Pem.Certificate.to_pem_cstruct [crt] |> Cstruct.to_string in
-     print_endline pem |> return
-  | None -> fail_with "I got gibberish while trying to decode the new certificate."
+     return (`Ok pem)
+  | None ->
+     return (`Error "I got gibberish while trying to decode the new certificate.")
+
+let get_crt rsa_pem csr_pem =
+  Nocrypto_entropy_lwt.initialize () >>= fun () ->
+  new_cli (Cstruct.of_string rsa_pem) (Cstruct.of_string csr_pem) >>= function
+  | `Error e -> return (`Error e)
+  | `Ok cli ->
+     new_reg cli >>= function
+     | `Error e -> return (`Error e)
+     | `Ok () ->
+        new_authz cli "tumbolandia.net" >>= function
+        | `Error e -> return (`Error e)
+        | `Ok challenge ->
+           do_http01_challenge cli challenge >>= function
+           | `Error e -> return (`Error e)
+           | `Ok () ->
+              challenge_met cli challenge >>= function
+              | `Error e -> return (`Error e)
+              | `Ok () ->
+                 (* poll status of request *)
+                 new_cert cli >>= function
+                 | `Error e -> return (`Error e)
+                 | `Ok pem -> return (`Ok pem)

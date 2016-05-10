@@ -30,7 +30,6 @@ let decode_header protected_header =
      | None, Some alg -> Some {alg; nonce; jwk=`Null}
      | Some jwk, Some alg -> Some {alg; nonce; jwk= Jwk.decode_json jwk}
 
-
 let decode ?(pub=`Null) data =
   match Json.of_string data with
   | None -> None

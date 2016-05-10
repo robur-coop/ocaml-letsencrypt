@@ -21,17 +21,12 @@ let csr_pem_arg =
 let main rsa_pem csr_pem  =
   let rsa_pem = read_file rsa_pem in
   let csr_pem = read_file csr_pem in
-  let get_crt =
-    Nocrypto_entropy_lwt.initialize () >>= fun () ->
-    new_cli (Cstruct.of_string rsa_pem) (Cstruct.of_string csr_pem) >>= function
-    | `Error _ -> Lwt.fail End_of_file
-    | `Ok cli ->
-       new_reg cli >>= fun body ->
-       new_authz cli "tumbolandia.net" >>= fun body ->
-       Lwt.return body
-  in
-  let message = Lwt_main.run get_crt in
-  print_endline message.token; print_endline (Uri.to_string message.url)
+  match Lwt_main.run (get_crt rsa_pem csr_pem) with
+  | `Error e ->
+     Printf.eprintf "Error: %s" e
+  | `Ok pem ->
+     Logs.info (fun m -> m "Certificate downloaded");
+     print_endline pem
 
 let info =
   let doc = "just another ACME client" in
