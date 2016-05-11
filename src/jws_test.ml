@@ -1,7 +1,5 @@
 open OUnit2
 
-module Json = Yojson.Basic
-
 let testkey_pem = "
 -----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEA4xgZ3eRPkwoRvy7qeRUbmMDe0V+xH9eWLdu0iheeLlrmD2mq
@@ -65,13 +63,17 @@ let jws_encode_somedata () =
   let priv_key = rsa_key () in
   let data  = {|{"Msg":"Hello JWS"}|} in
   let nonce = "nonce" in
-  Jws.encode priv_key data nonce |> Json.from_string
+  let jws = Jws.encode priv_key data nonce in
+  match Json.of_string jws with
+  | Some json -> json
+  | None -> raise (Failure "cannot understand json testcase!")
+
 
 let test_member member expected test_ctx =
   let jws = jws_encode_somedata () in
-  match Json.Util.member member jws with
-    | `String protected -> assert_equal protected expected
-    | _ ->
+  match Json.string_member member jws with
+    | Some protected -> assert_equal protected expected
+    | None ->
        let errmsg = Printf.sprintf "Cannot get field \"%s\"." member in
        assert_failure errmsg
 
