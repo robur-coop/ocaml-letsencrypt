@@ -46,8 +46,8 @@ let decode ?(pub=`Null) data =
         match maybe_protected with
         | None -> None
         | Some protected ->
-          let m = Cstruct.of_string (protected64 ^ "." ^ payload64) in
-          let signature = Cstruct.of_string signature in
+          let m = protected64 ^ "." ^ payload64 in
+          let signature = signature in
           let pub = if pub != `Null then pub else protected.jwk in
           let verify =
             match protected.alg, pub with

@@ -2,7 +2,6 @@ open Cohttp
 open Cohttp_lwt_unix
 open Dispatch
 open Lwt
-open Nocrypto
 
 module Json = Yojson.Basic
 

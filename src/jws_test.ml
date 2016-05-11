@@ -1,5 +1,4 @@
 open OUnit2
-open Nocrypto
 
 module Json = Yojson.Basic
 
@@ -31,7 +30,7 @@ N0rRAoGBAKGD+4ZI/E1MoJ5CXB8cDDMHagbE3cq/DtmYzE2v1DFpQYu5I4PCm5c7
 EQeIP6dZtv8IMgtGIb91QX9pXvP0aznzQKwYIA8nZgoENCPfiMTPiEDT9e/0lObO
 9XWsXpbSTsRPj0sv1rB+UzBJ0PgjK4q2zOF0sNo7b1+6nlM3BWPx
 -----END RSA PRIVATE KEY-----
-" |> Cstruct.of_string
+"
 
 let expected_protected =
   "eyJhbGciOiJSUzI1NiIsImp3ayI6eyJlIjoiQVFBQiIsImt0eSI6" ^
@@ -58,9 +57,8 @@ let expected_signature =
   "9IPLr8qZ7usYBKhEGwX3yq_eicAwBw"
 
 let rsa_key () =
-  let maybe_key = X509.Encoding.Pem.Private_key.of_pem_cstruct testkey_pem in
-  match maybe_key with
-    | [`RSA skey] -> skey
+  match Primitives.priv_of_pem testkey_pem with
+    | Some skey -> skey
     | _ -> raise (Failure "Unable to parse test RSA key.")
 
 let jws_encode_somedata () =

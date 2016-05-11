@@ -1,7 +1,6 @@
 open Cohttp
 open Cohttp_lwt_unix
 open Lwt
-open Nocrypto
 
 open Acme_common
 
@@ -71,7 +70,7 @@ let discover directory_url =
 
 let new_cli ?(directory_url="https://acme-v01.api.letsencrypt.org/directory") rsa_pem csr_pem =
   let maybe_rsa = Primitives.priv_of_pem rsa_pem in
-  let maybe_csr = Pem.Certificate_signing_request.of_pem_cstruct csr_pem in
+  let maybe_csr = Pem.Certificate_signing_request.of_pem_cstruct (Cstruct.of_string csr_pem) in
   match maybe_rsa, maybe_csr with
   | Some account_key, [csr] ->
      discover directory_url >>= fun (next_nonce, d)  ->
@@ -155,7 +154,7 @@ let new_authz cli domain =
 
 let challenge_met cli challenge =
   let token = challenge.token in
-  let pub = Rsa.pub_of_priv cli.account_key in
+  let pub = Primitives.pub_of_priv cli.account_key in
   let thumbprint = Jwk.thumbprint pub in
   let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
   (* write key_authorization *)
@@ -204,7 +203,7 @@ let new_cert cli =
  * However, the X509  doesn't export an API for this. *)
 let get_crt rsa_pem csr_pem domain =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
-  new_cli (Cstruct.of_string rsa_pem) (Cstruct.of_string csr_pem) >>= function
+  new_cli rsa_pem csr_pem >>= function
   | Error e -> return (Error e)
   | Ok cli ->
      new_reg cli >>= function

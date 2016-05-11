@@ -1,4 +1,3 @@
-open Nocrypto
 open OUnit2
 
 let n64 =
@@ -13,7 +12,7 @@ let n = B64u.urldecodez n64
 let e64 = "AQAB"
 let e = B64u.urldecodez e64
 
-let pub_key = Rsa.{n; e}
+let pub_key = Primitives.pub_of_z ~e ~n
 
 
 let test_encode text_ctx =
@@ -33,13 +32,9 @@ let decode_example =
   | `Rsa pub -> pub
   | `Null    -> assert_failure "Error decoding."
 
-let test_decode_e text_ctx =
+let test_decode text_ctx =
   let pub = decode_example in
-  assert_equal pub.Rsa.e e
-
-let test_decode_n text_ctx =
-  let pub = decode_example in
-  assert_equal pub.Rsa.n n
+  assert_equal (Primitives.pub_to_z pub) (e, n)
 
 let test_decode_badformed test_ctx =
   let s = "{" in
@@ -60,8 +55,7 @@ let test_decode_invalid_kty test_ctx =
 let all_tests = [
       "test_encode" >:: test_encode;
       "test_thumbprint" >:: test_thumbprint;
-      "test_decode_e" >:: test_decode_e;
-      "test_decode_n" >:: test_decode_n;
+      "test_decode" >:: test_decode;
       "test_decode_invalid_kty" >:: test_decode_invalid_kty;
       "test_decode_invalid_e" >:: test_decode_invalid_e;
       "test_decode_invalid_n" >:: test_decode_invalid_n;
