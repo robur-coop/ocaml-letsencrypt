@@ -5,3 +5,15 @@ Build with:
 
 
 Note: acme.ml is not tested, and should be considered yet to be implemented.
+
+
+
+- fstar from master, in 02 version of ocaml
+- get from master branch in https://github.com/FStarLang/FStar
+- compile only ocaml-output in src. Note that it alters your $PATH (crazy, I
+- know)
+- run with
+  fstar.exe --universes --include $FSTAR_HOME/ulib json.fst
+  where
+  maker@tumbolandia src]$ echo $FSTAR_HOME
+  /home/maker/dev/FStar/
