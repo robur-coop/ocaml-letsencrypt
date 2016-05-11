@@ -21,7 +21,8 @@ let csr_pem_arg =
 let main rsa_pem csr_pem  =
   let rsa_pem = read_file rsa_pem in
   let csr_pem = read_file csr_pem in
-  match Lwt_main.run (get_crt rsa_pem csr_pem) with
+  let domain = "www.tumbolandia.net" in
+  match Lwt_main.run (get_crt rsa_pem csr_pem domain) with
   | Error e ->
      Logs.err (fun m -> m "Error: %s" e)
   | Ok pem ->

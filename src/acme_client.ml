@@ -199,7 +199,10 @@ let new_cert cli =
      let msg = Printf.sprintf "code %d; body '%s'" code body in
      return (Error msg)
 
-let get_crt rsa_pem csr_pem =
+(* XXX. the information for all domains is already available in the csr,
+ * there should be no need to have it as parameter.
+ * However, the X509  doesn't export an API for this. *)
+let get_crt rsa_pem csr_pem domain =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
   new_cli (Cstruct.of_string rsa_pem) (Cstruct.of_string csr_pem) >>= function
   | Error e -> return (Error e)
@@ -207,7 +210,7 @@ let get_crt rsa_pem csr_pem =
      new_reg cli >>= function
      | Error e -> return (Error e)
      | Ok () ->
-        new_authz cli "tumbolandia.net" >>= function
+        new_authz cli domain >>= function
         | Error e -> return (Error e)
         | Ok challenge ->
            do_http01_challenge cli challenge >>= function
