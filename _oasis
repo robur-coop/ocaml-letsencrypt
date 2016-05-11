@@ -1,29 +1,30 @@
-OASISFormat: 0.4
-Name:        acme
-Version:     0.1
-Synopsis:    ACME support for OCaml
-Plugins:     META (0.4), DevFiles (0.4)
-BuildTools:  ocamlbuild
-Authors:     maker <maker@tumbolandia.net>
-License:     WTFPL
+OASISFormat:  0.4
+OcamlVersion: >= 4.03.0
+Name:         acme
+Version:      0.1
+Synopsis:     ACME support for OCaml
+Plugins:      META (0.4), DevFiles (0.4)
+BuildTools:   ocamlbuild
+Authors:      maker <maker@tumbolandia.net>
+License:      WTFPL
 
 Executable "oacmel"
   Path: src
   MainIs: oacmel.ml
   CompiledObject: native
-  BuildDepends: x509, cohttp, yojson, lwt, cohttp.lwt, base64, pkg_cohttp,
+  BuildDepends: x509, cohttp, yojson, lwt, cohttp.lwt, base64,
                 nocrypto.lwt, zarith, cmdliner, logs, logs.fmt
 
 Executable "acme_server"
   Path: src
   MainIs: acme_server.ml
   CompiledObject: native
-  BuildDepends: x509, cohttp, yojson, lwt, cohttp.lwt, base64, pkg_cohttp,
+  BuildDepends: x509, cohttp, yojson, lwt, cohttp.lwt, base64,
                 nocrypto.lwt, zarith, oUnit, dispatch
 
 Executable "test"
   Path: src
   MainIs: tests.ml
   CompiledObject: native
-  BuildDepends: x509, cohttp, yojson, lwt, cohttp.lwt, base64, pkg_cohttp,
+  BuildDepends: x509, cohttp, yojson, lwt, cohttp.lwt, base64,
                 nocrypto.lwt, zarith, oUnit, logs, logs.fmt

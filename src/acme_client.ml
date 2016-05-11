@@ -75,9 +75,9 @@ let new_cli ?(directory_url="https://acme-v01.api.letsencrypt.org/directory") rs
   match maybe_rsa, maybe_csr with
   | Some account_key, [csr] ->
      discover directory_url >>= fun (next_nonce, d)  ->
-     `Ok {account_key; csr; next_nonce; d} |> return
+     Ok {account_key; csr; next_nonce; d} |> return
   | _ ->
-     `Error "Error: there's a problem paring those pem files." |> return
+     Error "Error: there's a problem paring those pem files." |> return
 
 let cli_recv = http_get
 
@@ -103,12 +103,12 @@ let new_reg cli =
    * However, it seems for a simple client this information is not necessary.
    * Also, in a bright future these prints should be transformed in logs.*)
   match code with
-  | 201 -> Logs.info (fun m -> m "Account created.");  return (`Ok ())
-  | 409 -> Logs.info (fun m -> m "Already registered."); return (`Ok ())
+  | 201 -> Logs.info (fun m -> m "Account created.");  return (Ok ())
+  | 409 -> Logs.info (fun m -> m "Already registered."); return (Ok ())
   | _   ->
      let err_msg = Printf.sprintf "Error: shit happened in registration. Error code %d; body %s"
                                   code body in
-     return (`Error err_msg)
+     return (Error err_msg)
 
 let malformed_json j = Printf.sprintf "malformed json: %s" (Json.to_string j)
 
@@ -119,24 +119,24 @@ let get_http01_challenge authorization =
      begin
        let is_http01 c = Json.Util.member "type" c = `String "http-01" in
        match List.filter is_http01 challenges with
-       | []  -> `Error "No supported challenges found."
+       | []  -> Error "No supported challenges found."
        | challenge :: _ ->
           let token = Json.Util.member "token" challenge in
           let url = Json.Util.member "uri" challenge in
           match token, url with
-          | `String t, `String u -> `Ok {token=t; url=Uri.of_string u}
-          | _ -> `Error (malformed_json authorization)
+          | `String t, `String u -> Ok {token=t; url=Uri.of_string u}
+          | _ -> Error (malformed_json authorization)
      end
-  | _ -> `Error (malformed_json authorization)
+  | _ -> Error (malformed_json authorization)
 
 let do_http01_challenge cli challenge =
   let token = challenge.token in
-  let pk = Rsa.pub_of_priv cli.account_key in
+  let pk = Primitives.pub_of_priv cli.account_key in
   let thumbprint = Jwk.thumbprint pk in
   let path = token in
   let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
-  Printf.printf "Now put %s in a file named \"%s\"" key_authorization path;
-  return (`Ok ())
+  Printf.printf "Now put %s in a file named \"%s\"\n" key_authorization path;
+  return (Ok ())
 
 let new_authz cli domain =
   let url = cli.d.new_authz in
@@ -151,7 +151,7 @@ let new_authz cli domain =
   (* XXX. any other codes to handle? *)
   | _ ->
      let msg = Printf.sprintf "new-authz error: code %d and body: '%s'" code body in
-     return (`Error msg)
+     return (Error msg)
 
 let challenge_met cli challenge =
   let token = challenge.token in
@@ -164,16 +164,16 @@ let challenge_met cli challenge =
                    key_authorization in
   cli_send cli data challenge.url >>= fun _ ->
   (* XXX. here we should deal with the resulting codes, at least. *)
-  return (`Ok ())
+  return (Ok ())
 
 let poll_challenge_status cli challenge =
   cli_recv challenge.url >>= fun (code, headers, body) ->
   let challenge_status = Json.from_string body in
   let status = Json.Util.member "status" challenge_status |> Json.Util.to_string in
   match status with
-  | "valid" -> return (`Ok false)
-  | "pending" -> return (`Ok true)
-  | _ -> return (`Error "I got gibberish while polling for challange status.")
+  | "valid" -> return (Ok false)
+  | "pending" -> return (Ok true)
+  | _ -> return (Error "I got gibberish while polling for challange status.")
 
 
 let der_to_pem der =
@@ -181,9 +181,9 @@ let der_to_pem der =
   match X509.Encoding.parse der with
   | Some crt ->
      let pem = Pem.Certificate.to_pem_cstruct [crt] |> Cstruct.to_string in
-     `Ok pem
+     Ok pem
   | None ->
-     `Error "I got gibberish while trying to decode the new certificate."
+     Error "I got gibberish while trying to decode the new certificate."
 
 let new_cert cli =
   (* formulate the request *)
@@ -197,26 +197,26 @@ let new_cert cli =
      return (der_to_pem der)
   | _ ->
      let msg = Printf.sprintf "code %d; body '%s'" code body in
-     return (`Error msg)
+     return (Error msg)
 
 let get_crt rsa_pem csr_pem =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
   new_cli (Cstruct.of_string rsa_pem) (Cstruct.of_string csr_pem) >>= function
-  | `Error e -> return (`Error e)
-  | `Ok cli ->
+  | Error e -> return (Error e)
+  | Ok cli ->
      new_reg cli >>= function
-     | `Error e -> return (`Error e)
-     | `Ok () ->
+     | Error e -> return (Error e)
+     | Ok () ->
         new_authz cli "tumbolandia.net" >>= function
-        | `Error e -> return (`Error e)
-        | `Ok challenge ->
+        | Error e -> return (Error e)
+        | Ok challenge ->
            do_http01_challenge cli challenge >>= function
-           | `Error e -> return (`Error e)
-           | `Ok () ->
+           | Error e -> return (Error e)
+           | Ok () ->
               challenge_met cli challenge >>= function
-              | `Error e -> return (`Error e)
-              | `Ok () ->
+              | Error e -> return (Error e)
+              | Ok () ->
                  (* poll status of request *)
                  new_cert cli >>= function
-                 | `Error e -> return (`Error e)
-                 | `Ok pem -> return (`Ok pem)
+                 | Error e -> return (Error e)
+                 | Ok pem -> return (Ok pem)
