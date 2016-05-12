@@ -19,8 +19,16 @@ type challenge_t = {
     token: string;
   }
 
-let malformed_json j = Printf.sprintf "malformed json: %s" (J.to_string j)
 
+let malformed_json j =
+  let msg = Printf.sprintf "malformed json: %s" (J.to_string j) in
+  Error msg
+
+let error_in endpoint code body =
+  let body = String.escaped body in
+  let errf = Printf.sprintf "Error at %s: code %d - body: %s" in
+  let msg = errf endpoint code body in
+  return (Error msg)
 
 (** I guess for now we can leave a function here of type
  * bytes -> bytes -> unit
@@ -107,10 +115,7 @@ let new_reg cli =
   match code with
   | 201 -> Logs.info (fun m -> m "Account created.");  return (Ok ())
   | 409 -> Logs.info (fun m -> m "Already registered."); return (Ok ())
-  | _   ->
-     let err_msg = Printf.sprintf "Error: shit happened in registration. Error code %d; body %s"
-                                  code body in
-     return (Error err_msg)
+  | _   -> error_in "new-reg" code body
 
 let get_http01_challenge authorization =
   let challenges_list = J.Util.member "challenges" authorization in
@@ -125,9 +130,9 @@ let get_http01_challenge authorization =
           let url = J.Util.member "uri" challenge in
           match token, url with
           | `String t, `String u -> Ok {token=t; url=Uri.of_string u}
-          | _ -> Error (malformed_json authorization)
+          | _ -> malformed_json authorization
      end
-  | _ -> Error (malformed_json authorization)
+  | _ -> malformed_json authorization
 
 let do_http01_challenge cli challenge acme_dir =
   let token = challenge.token in
@@ -149,9 +154,7 @@ let new_authz cli domain =
      let authorization = J.from_string body in
      return (get_http01_challenge authorization)
   (* XXX. any other codes to handle? *)
-  | _ ->
-     let msg = Printf.sprintf "new-authz error: code %d and body: '%s'" code body in
-     return (Error msg)
+  | _ -> error_in "new-authz" code body
 
 let challenge_met cli challenge =
   let token = challenge.token in
@@ -176,19 +179,10 @@ let poll_challenge_status cli challenge =
        | Some "valid" -> return (Ok false)
        | Some "pending"
        (* «If this field is missing, then the default value is "pending".» *)
-       | None ->         return (Ok true)
-       | Some status ->
-          let escaped_status = String.escaped status in
-          let msg = Printf.sprintf "Unexpected status \"%s\"." escaped_status in
-          return (Error msg)
-       | None ->
-
-          return (Error "malformed json")
+       | None -> return (Ok true)
+       | Some status -> error_in "polling" code body
      end
-  | _ ->
-     let msg = Printf.sprintf
-                 "Unexpected HTTP code %d when polling status." code in
-     return (Error msg)
+  | _ -> error_in "polling" code body
 
 let rec poll_until ?(sec=10) cli challenge =
   Unix.sleep sec;
@@ -214,11 +208,8 @@ let new_cert cli =
   let data = Printf.sprintf {|{"resource": "new-cert", "csr": "%s"}|} der in
   cli_send cli data url >>= fun (code, headers, body) ->
   match code with
-  | 201 ->
-     return (der_to_pem body)
-  | _ ->
-     let msg = Printf.sprintf "code %d; body '%s'" code body in
-     return (Error msg)
+  | 201 -> return (der_to_pem body)
+  | _ -> error_in "new-cert" code body
 
 let get_crt directory_url rsa_pem csr_pem acme_dir domain =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
