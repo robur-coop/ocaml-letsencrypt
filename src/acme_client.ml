@@ -177,7 +177,7 @@ let poll_challenge_status cli challenge =
   match code, Json.of_string body with
   (* XXX. if we check the HTTP code then we can omit checking the status? *)
   | 202, _ ->
-     return (Ok false)
+     return (Ok true)
   | 200, Some challenge_status ->
      begin
        let status =  Json.string_member "status" challenge_status in
