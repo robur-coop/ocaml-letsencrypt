@@ -2,7 +2,15 @@ open Acme.Client
 open Cmdliner
 open Lwt
 
+(* XXX. Actually, this is not really a "default".
+ * - letsencrypt wants you to accept the terms of agreement,
+ *   but the url for these is on a non-standard endpoint /terms
+ *)
+let default_directory_url = "https://acme-v01.api.letsencrypt.org/directory"
+
+
 (* XXX. Perhaps there's a more decent way in OCaml for reading a file? *)
+(* XXX. we are not dealing with exceptions here. *)
 let read_file filename =
   let bufsize = 32768 in
   let ic = open_in filename in
@@ -44,9 +52,10 @@ let main rsa_pem csr_pem acme_dir domain debug =
   let log_level = if debug then Logs.Debug else Logs.Info in
   let rsa_pem = read_file rsa_pem in
   let csr_pem = read_file csr_pem in
+  let f = get_crt default_directory_url rsa_pem csr_pem acme_dir domain in
   Logs.set_level (Some log_level);
   Logs.set_reporter (Logs_fmt.reporter ());
-  match Lwt_main.run (get_crt rsa_pem csr_pem acme_dir domain) with
+  match Lwt_main.run f with
   | Error e ->
      Logs.err (fun m -> m "Error: %s" e)
   | Ok pem ->

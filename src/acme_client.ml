@@ -19,12 +19,6 @@ type challenge_t = {
     token: string;
   }
 
-(* XXX. Actually, this is not really a "default".
- * - letsecnrypt wants you to accept the terms of agreement,
- *   but the url for these is on a non-standard endpoint /terms
- *)
-let default_directory_url = "https://acme-v01.api.letsencrypt.org/directory"
-
 let malformed_json j = Printf.sprintf "malformed json: %s" (J.to_string j)
 
 
@@ -76,7 +70,7 @@ let discover directory_url =
   in
   return (nonce, directory)
 
-let new_cli ?(directory_url=default_directory_url) rsa_pem csr_pem =
+let new_cli directory_url rsa_pem csr_pem =
   let maybe_rsa = Primitives.priv_of_pem rsa_pem in
   let maybe_csr = Pem.Certificate_signing_request.of_pem_cstruct (Cstruct.of_string csr_pem) in
   match maybe_rsa, maybe_csr with
@@ -227,12 +221,9 @@ let new_cert cli =
      let msg = Printf.sprintf "code %d; body '%s'" code body in
      return (Error msg)
 
-(* XXX. the information for all domains is already available in the csr,
- * there should be no need to have it as parameter.
- * However, the X509  doesn't export an API for this. *)
-let get_crt rsa_pem csr_pem acme_dir domain =
+let get_crt directory_url rsa_pem csr_pem acme_dir domain =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
-  new_cli rsa_pem csr_pem >>= function
+  new_cli directory_url rsa_pem csr_pem >>= function
   | Error e -> return (Error e)
   | Ok cli ->
      new_reg cli >>= function
