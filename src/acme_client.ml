@@ -19,6 +19,9 @@ type challenge_t = {
     token: string;
   }
 
+(* May these functions be added to Lwt one day. *)
+let return_ok a = return (Ok a)
+let return_error e = return (Error e)
 
 let malformed_json j =
   let msg = Printf.sprintf "malformed json: %s" (J.to_string j) in
@@ -28,7 +31,8 @@ let error_in endpoint code body =
   let body = String.escaped body in
   let errf = Printf.sprintf "Error at %s: code %d - body: %s" in
   let msg = errf endpoint code body in
-  return (Error msg)
+  return_error msg
+
 
 (** I guess for now we can leave a function here of type
  * bytes -> bytes -> unit
@@ -113,8 +117,8 @@ let new_reg cli =
    * However, it seems for a simple client this information is not necessary.
    * Also, in a bright future these prints should be transformed in logs.*)
   match code with
-  | 201 -> Logs.info (fun m -> m "Account created.");  return (Ok ())
-  | 409 -> Logs.info (fun m -> m "Already registered."); return (Ok ())
+  | 201 -> Logs.info (fun m -> m "Account created.");  return_ok ()
+  | 409 -> Logs.info (fun m -> m "Already registered."); return_ok ()
   | _   -> error_in "new-reg" code body
 
 let get_http01_challenge authorization =
@@ -141,7 +145,7 @@ let do_http01_challenge cli challenge acme_dir =
   let path = acme_dir ^ token in
   let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
   write_string path key_authorization;
-  return (Ok ())
+  return_ok ()
 
 let new_authz cli domain =
   let url = cli.d.new_authz in
@@ -167,7 +171,7 @@ let challenge_met cli challenge =
                    key_authorization in
   cli_send cli data challenge.url >>= fun _ ->
   (* XXX. here we should deal with the resulting codes, at least. *)
-  return (Ok ())
+  return_ok ()
 
 let poll_challenge_status cli challenge =
   cli_recv challenge.url >>= fun (code, headers, body) ->
@@ -176,10 +180,10 @@ let poll_challenge_status cli challenge =
      begin
        let status =  Json.string_member "status" challenge_status in
        match status with
-       | Some "valid" -> return (Ok false)
+       | Some "valid" -> return_ok false
        | Some "pending"
        (* «If this field is missing, then the default value is "pending".» *)
-       | None -> return (Ok true)
+       | None -> return_ok true
        | Some status -> error_in "polling" code body
      end
   | _ -> error_in "polling" code body
@@ -187,8 +191,8 @@ let poll_challenge_status cli challenge =
 let rec poll_until ?(sec=10) cli challenge =
   Unix.sleep sec;
   poll_challenge_status cli challenge >>= function
-  | Error e  -> return (Error e)
-  | Ok false -> return (Ok ())
+  | Error e  -> return_error e
+  | Ok false -> return_ok ()
   | Ok true  ->
      Logs.info (fun m -> m "Polling...");
      poll_until cli challenge
@@ -214,23 +218,23 @@ let new_cert cli =
 let get_crt directory_url rsa_pem csr_pem acme_dir domain =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
   new_cli directory_url rsa_pem csr_pem >>= function
-  | Error e -> return (Error e)
+  | Error e -> return_error e
   | Ok cli ->
      new_reg cli >>= function
-     | Error e -> return (Error e)
+     | Error e -> return_error e
      | Ok () ->
         new_authz cli domain >>= function
-        | Error e -> return (Error e)
+        | Error e -> return_error e
         | Ok challenge ->
            do_http01_challenge cli challenge acme_dir >>= function
-           | Error e -> return (Error e)
+           | Error e -> return_error e
            | Ok () ->
               challenge_met cli challenge >>= function
-              | Error e -> return (Error e)
+              | Error e -> return_error e
               | Ok () ->
                  poll_until cli challenge >>= function
-                 | Error e -> return (Error e)
+                 | Error e -> return_error e
                  | Ok () ->
                     new_cert cli >>= function
-                    | Error e -> return (Error e)
-                    | Ok pem -> return (Ok pem)
+                    | Error e -> return_error e
+                    | Ok pem -> return_ok pem
