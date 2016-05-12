@@ -88,9 +88,9 @@ let new_cli directory_url rsa_pem csr_pem =
   match maybe_rsa, maybe_csr with
   | Some account_key, [csr] ->
      discover directory_url >>= fun (next_nonce, d)  ->
-     Ok {account_key; csr; next_nonce; d} |> return
+     return_ok {account_key; csr; next_nonce; d}
   | _ ->
-     Error "Error: there's a problem paring those pem files." |> return
+     return_error "Error: there's a problem paring those pem files."
 
 let cli_recv = http_get
 
