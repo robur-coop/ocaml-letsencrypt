@@ -26,10 +26,19 @@ let acme_dir_arg =
     "http://example.com/.well-known/acme-challenge/" in
   Arg.(value & opt string default_path & info ["acme_dir"] ~docv:"DIR" ~doc)
 
-let main rsa_pem csr_pem acme_dir =
+(* XXX. the information for all domains is already available in the csr,
+ * there should be no need to have it as parameter.
+ * However, the X509  doesn't export an API for this. *)
+let domain_arg =
+  (* XXX. please remove me *)
+  let default_host = "test.tumbolandia.net" in
+  let doc = "The domain to validate." in
+  (* XXX. this should be an uri, non optional, from which we take only the host *)
+  Arg.(value & opt string default_host & info ["H"; "host"] ~docv:"URL" ~doc)
+
+let main rsa_pem csr_pem acme_dir domain =
   let rsa_pem = read_file rsa_pem in
   let csr_pem = read_file csr_pem in
-  let domain = "www.tumbolandia.net" in
   match Lwt_main.run (get_crt rsa_pem csr_pem acme_dir domain) with
   | Error e ->
      Logs.err (fun m -> m "Error: %s" e)
@@ -48,7 +57,11 @@ let info =
 let () =
   Logs.set_reporter (Logs_fmt.reporter ());
   Logs.set_level (Some Logs.Info);
-  let cli = Term.(const main $ rsa_pem_arg $ csr_pem_arg $ acme_dir_arg) in
+  let cli = Term.(const main
+                  $ rsa_pem_arg
+                  $ csr_pem_arg
+                  $ acme_dir_arg
+                  $ domain_arg) in
   match Term.eval (cli, info) with
   | `Error _ -> exit 1
   | _        -> exit 0
