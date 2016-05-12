@@ -168,13 +168,31 @@ let challenge_met cli challenge =
 
 let poll_challenge_status cli challenge =
   cli_recv challenge.url >>= fun (code, headers, body) ->
-  let challenge_status = Json.from_string body in
-  let status = Json.Util.member "status" challenge_status |> Json.Util.to_string in
-  match status with
-  | "valid" -> return (Ok false)
-  | "pending" -> return (Ok true)
-  | _ -> return (Error "I got gibberish while polling for challange status.")
+  match code, Json.of_string body with
+  | 200, Some challenge_status ->
+     begin
+       let status =  Json.string_member "status" challenge_status in
+       match status with
+       | Some "valid" -> return (Ok false)
+       | Some "pending" -> return (Ok true)
+       | Some status ->
+          let escaped_status = String.escaped status in
+          let msg = Printf.sprintf "Unexpected status \"%s\"." escaped_status in
+          return (Error msg)
+       | None ->
+          (* XXX. replace with Error (malformed_json challenge_status) *)
+          return (Error "malformed json")
+     end
+  | _, _ ->
+     let msg = Printf.sprintf
+                 "Unexpected HTTP code %d when polling status." code in
+     return (Error msg)
 
+let rec poll_until ?(sec=10) cli challenge =
+  poll_challenge_status cli challenge >>= function
+  | Ok false -> return (Ok ())
+  | Ok true  -> Unix.sleep sec; poll_until cli challenge
+  | Error e  -> return (Error e)
 
 let der_to_pem der =
   let der = Cstruct.of_string der in
@@ -219,7 +237,9 @@ let get_crt rsa_pem csr_pem domain =
               challenge_met cli challenge >>= function
               | Error e -> return (Error e)
               | Ok () ->
-                 (* poll status of request *)
-                 new_cert cli >>= function
+                 poll_until cli challenge >>= function
                  | Error e -> return (Error e)
-                 | Ok pem -> return (Ok pem)
+                 | Ok () ->
+                    new_cert cli >>= function
+                    | Error e -> return (Error e)
+                    | Ok pem -> return (Ok pem)
