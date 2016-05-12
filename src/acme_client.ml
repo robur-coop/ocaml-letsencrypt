@@ -19,6 +19,14 @@ type challenge_t = {
     token: string;
   }
 
+(* XXX. Actually, this is not really a "default".
+ * - letsecnrypt wants you to accept the terms of agreement,
+ *   but the url for these is on a non-standard endpoint /terms
+ * - When writing to the challenge file, we are using the path required
+ *   by letsencrypt. This is not standard.
+ *)
+let default_directory_url = "https://acme-v01.api.letsencrypt.org/directory"
+
 let malformed_json j = Printf.sprintf "malformed json: %s" (J.to_string j)
 
 
@@ -70,7 +78,7 @@ let discover directory_url =
   in
   return (nonce, directory)
 
-let new_cli ?(directory_url="https://acme-v01.api.letsencrypt.org/directory") rsa_pem csr_pem =
+let new_cli ?(directory_url=default_directory_url) rsa_pem csr_pem =
   let maybe_rsa = Primitives.priv_of_pem rsa_pem in
   let maybe_csr = Pem.Certificate_signing_request.of_pem_cstruct (Cstruct.of_string csr_pem) in
   match maybe_rsa, maybe_csr with
@@ -133,9 +141,9 @@ let do_http01_challenge cli challenge =
   let token = challenge.token in
   let pk = Primitives.pub_of_priv cli.account_key in
   let thumbprint = Jwk.thumbprint pk in
-  let path = token in
+  let path = ".well-known/acme-challenge/" ^ token in
   let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
-  Printf.printf "Now put %s in a file named \"%s\"\n" key_authorization path;
+  write_string path key_authorization;
   return (Ok ())
 
 let new_authz cli domain =
@@ -204,7 +212,6 @@ let der_to_pem der =
      Error "I got gibberish while trying to decode the new certificate."
 
 let new_cert cli =
-  (* formulate the request *)
   let url = cli.d.new_cert in
   let der = X509.Encoding.cs_of_signing_request cli.csr |> Cstruct.to_string |> B64u.urlencode in
   let data = Printf.sprintf {|{"resource": "new-cert", "csr": "%s"}|} der in
