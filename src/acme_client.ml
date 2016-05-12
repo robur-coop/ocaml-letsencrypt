@@ -174,11 +174,8 @@ let challenge_met cli challenge =
 
 let poll_challenge_status cli challenge =
   cli_recv challenge.url >>= fun (code, headers, body) ->
-  match code, Json.of_string body with
-  (* XXX. if we check the HTTP code then we can omit checking the status? *)
-  | 202, _ ->
-     return (Ok true)
-  | 200, Some challenge_status ->
+  match Json.of_string body with
+  | Some challenge_status ->
      begin
        let status =  Json.string_member "status" challenge_status in
        match status with
@@ -194,16 +191,19 @@ let poll_challenge_status cli challenge =
 
           return (Error "malformed json")
      end
-  | _, _ ->
+  | _ ->
      let msg = Printf.sprintf
                  "Unexpected HTTP code %d when polling status." code in
      return (Error msg)
 
 let rec poll_until ?(sec=10) cli challenge =
+  Unix.sleep sec;
   poll_challenge_status cli challenge >>= function
-  | Ok false -> return (Ok ())
-  | Ok true  -> Unix.sleep sec; poll_until cli challenge
   | Error e  -> return (Error e)
+  | Ok false -> return (Ok ())
+  | Ok true  ->
+     Logs.info (fun m -> m "Polling...");
+     poll_until cli challenge
 
 let der_to_pem der =
   let der = Cstruct.of_string der in
