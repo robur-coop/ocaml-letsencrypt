@@ -36,9 +36,16 @@ let domain_arg =
   (* XXX. this should be an uri, non optional, from which we take only the host *)
   Arg.(value & opt string default_host & info ["H"; "host"] ~docv:"URL" ~doc)
 
-let main rsa_pem csr_pem acme_dir domain =
+let debug_arg =
+  let doc = "Turn on debug logging." in
+  Arg.(value & flag & info ["v"] ~doc)
+
+let main rsa_pem csr_pem acme_dir domain debug =
+  let log_level = if debug then Logs.Debug else Logs.Info in
   let rsa_pem = read_file rsa_pem in
   let csr_pem = read_file csr_pem in
+  Logs.set_level (Some log_level);
+  Logs.set_reporter (Logs_fmt.reporter ());
   match Lwt_main.run (get_crt rsa_pem csr_pem acme_dir domain) with
   | Error e ->
      Logs.err (fun m -> m "Error: %s" e)
@@ -55,13 +62,12 @@ let info =
   Term.info "oacmel" ~version:"0.1" ~doc ~man
 
 let () =
-  Logs.set_reporter (Logs_fmt.reporter ());
-  Logs.set_level (Some Logs.Info);
   let cli = Term.(const main
                   $ rsa_pem_arg
                   $ csr_pem_arg
                   $ acme_dir_arg
-                  $ domain_arg) in
+                  $ domain_arg
+                  $ debug_arg) in
   match Term.eval (cli, info) with
   | `Error _ -> exit 1
   | _        -> exit 0
