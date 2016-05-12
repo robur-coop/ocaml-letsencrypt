@@ -4,7 +4,7 @@ open Lwt
 
 open Acme_common
 
-module Json = Yojson.Basic
+module J = Yojson.Basic
 module Pem = X509.Encoding.Pem
 
 type client_t = {
@@ -18,6 +18,8 @@ type challenge_t = {
     url: Uri.t;
     token: string;
   }
+
+let malformed_json j = Printf.sprintf "malformed json: %s" (J.to_string j)
 
 
 (** I guess for now we can leave a function here of type
@@ -56,8 +58,8 @@ let discover directory_url =
   http_get directory_url >>= fun (code, headers, body) ->
   extract_nonce headers  >>= fun nonce ->
   let directory =
-    let dir = Json.from_string body in
-    let member m = Json.Util.member m dir |> Json.Util.to_string |> Uri.of_string in
+    let dir = J.from_string body in
+    let member m = J.Util.member m dir |> J.Util.to_string |> Uri.of_string in
     {
       directory = directory_url;
       new_authz = member "new-authz";
@@ -109,19 +111,17 @@ let new_reg cli =
                                   code body in
      return (Error err_msg)
 
-let malformed_json j = Printf.sprintf "malformed json: %s" (Json.to_string j)
-
 let get_http01_challenge authorization =
-  let challenges_list = Json.Util.member "challenges" authorization in
+  let challenges_list = J.Util.member "challenges" authorization in
   match challenges_list with
   | `List challenges ->
      begin
-       let is_http01 c = Json.Util.member "type" c = `String "http-01" in
+       let is_http01 c = J.Util.member "type" c = `String "http-01" in
        match List.filter is_http01 challenges with
        | []  -> Error "No supported challenges found."
        | challenge :: _ ->
-          let token = Json.Util.member "token" challenge in
-          let url = Json.Util.member "uri" challenge in
+          let token = J.Util.member "token" challenge in
+          let url = J.Util.member "uri" challenge in
           match token, url with
           | `String t, `String u -> Ok {token=t; url=Uri.of_string u}
           | _ -> Error (malformed_json authorization)
@@ -145,7 +145,7 @@ let new_authz cli domain =
   cli_send cli body url >>= fun (code, headers, body) ->
   match code with
   | 201 ->
-     let authorization = Json.from_string body in
+     let authorization = J.from_string body in
      return (get_http01_challenge authorization)
   (* XXX. any other codes to handle? *)
   | _ ->
