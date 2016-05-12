@@ -22,8 +22,6 @@ type challenge_t = {
 (* XXX. Actually, this is not really a "default".
  * - letsecnrypt wants you to accept the terms of agreement,
  *   but the url for these is on a non-standard endpoint /terms
- * - When writing to the challenge file, we are using the path required
- *   by letsencrypt. This is not standard.
  *)
 let default_directory_url = "https://acme-v01.api.letsencrypt.org/directory"
 
@@ -137,11 +135,11 @@ let get_http01_challenge authorization =
      end
   | _ -> Error (malformed_json authorization)
 
-let do_http01_challenge cli challenge =
+let do_http01_challenge cli challenge acme_dir =
   let token = challenge.token in
   let pk = Primitives.pub_of_priv cli.account_key in
   let thumbprint = Jwk.thumbprint pk in
-  let path = ".well-known/acme-challenge/" ^ token in
+  let path = acme_dir ^ token in
   let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
   write_string path key_authorization;
   return (Ok ())
@@ -227,7 +225,7 @@ let new_cert cli =
 (* XXX. the information for all domains is already available in the csr,
  * there should be no need to have it as parameter.
  * However, the X509  doesn't export an API for this. *)
-let get_crt rsa_pem csr_pem domain =
+let get_crt rsa_pem csr_pem acme_dir domain =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
   new_cli rsa_pem csr_pem >>= function
   | Error e -> return (Error e)
@@ -238,7 +236,7 @@ let get_crt rsa_pem csr_pem domain =
         new_authz cli domain >>= function
         | Error e -> return (Error e)
         | Ok challenge ->
-           do_http01_challenge cli challenge >>= function
+           do_http01_challenge cli challenge acme_dir >>= function
            | Error e -> return (Error e)
            | Ok () ->
               challenge_met cli challenge >>= function
