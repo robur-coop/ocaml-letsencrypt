@@ -215,8 +215,7 @@ let new_cert cli =
   cli_send cli data url >>= fun (code, headers, body) ->
   match code with
   | 201 ->
-     let der = B64u.urldecode body in
-     return (der_to_pem der)
+     return (der_to_pem body)
   | _ ->
      let msg = Printf.sprintf "code %d; body '%s'" code body in
      return (Error msg)
