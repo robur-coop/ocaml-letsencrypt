@@ -7,6 +7,7 @@ open Lwt
  *   but the url for these is on a non-standard endpoint /terms
  *)
 let default_directory_url = "https://acme-v01.api.letsencrypt.org/directory"
+(* let default_directory_url = "https://acme-staging.api.letsencrypt.org/directory" *)
 
 
 (* XXX. Perhaps there's a more decent way in OCaml for reading a file? *)
