@@ -1,5 +1,5 @@
-type pub;;
-type priv;;
+type pub
+type priv
 
 val priv_of_pem : string -> priv option
 
