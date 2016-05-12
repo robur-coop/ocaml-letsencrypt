@@ -175,18 +175,23 @@ let challenge_met cli challenge =
 let poll_challenge_status cli challenge =
   cli_recv challenge.url >>= fun (code, headers, body) ->
   match code, Json.of_string body with
+  (* XXX. if we check the HTTP code then we can omit checking the status? *)
+  | 202, _ ->
+     return (Ok false)
   | 200, Some challenge_status ->
      begin
        let status =  Json.string_member "status" challenge_status in
        match status with
        | Some "valid" -> return (Ok false)
-       | Some "pending" -> return (Ok true)
+       | Some "pending"
+       (* «If this field is missing, then the default value is "pending".» *)
+       | None ->         return (Ok true)
        | Some status ->
           let escaped_status = String.escaped status in
           let msg = Printf.sprintf "Unexpected status \"%s\"." escaped_status in
           return (Error msg)
        | None ->
-          (* XXX. replace with Error (malformed_json challenge_status) *)
+
           return (Error "malformed json")
      end
   | _, _ ->
