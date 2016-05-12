@@ -86,8 +86,9 @@ let cli_send cli data url =
   http_post_jws cli.account_key cli.next_nonce data url >>= fun (resp, body) ->
   let code = resp |> Response.status |> Code.code_of_status in
   let headers = resp |> Response.headers in
-  extract_nonce headers >>= fun next_nonce ->
   body |> Cohttp_lwt_body.to_string >>= fun body ->
+  Logs.debug (fun m -> m "Got code: %d - body %s" code (String.escaped body));
+  extract_nonce headers >>= fun next_nonce ->
   (* XXX: is this like cheating? *)
   cli.next_nonce <- next_nonce;
   return (code, headers, body)
