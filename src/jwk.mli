@@ -1,4 +1,4 @@
-(** [Jwk]: Json has never been more wasted.
+(** [Jwk]: Json Web Key.
 
     Jwk is an implementation of the Json Web Key standard (RFC7638).
  *)

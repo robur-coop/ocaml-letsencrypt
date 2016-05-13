@@ -6,7 +6,7 @@ open Acme_common
 
 module Pem = X509.Encoding.Pem
 
-type client_t = {
+type t = {
     account_key: Primitives.priv;
     csr:  X509.CA.signing_request;
     mutable next_nonce: string;
@@ -91,6 +91,7 @@ let new_cli directory_url rsa_pem csr_pem =
 
 
 let http_post_jws cli data url =
+
   let http_post key nonce data url =
     let body = Jws.encode key data nonce  in
     let body_len = string_of_int (String.length body) in
@@ -125,6 +126,7 @@ let new_reg cli =
   | 201 -> Logs.info (fun m -> m "Account created.");  return_ok ()
   | 409 -> Logs.info (fun m -> m "Already registered."); return_ok ()
   | _   -> error_in "new-reg" code body
+
 
 let get_http01_challenge authorization =
   match Json.list_member "challenges" authorization with
@@ -181,6 +183,7 @@ let challenge_met cli challenge =
   (* XXX. here we should deal with the resulting codes, at least. *)
   return_ok ()
 
+
 let poll_challenge_status cli challenge =
   http_get challenge.url >>= fun (code, headers, body) ->
   match Json.of_string body with
@@ -196,6 +199,7 @@ let poll_challenge_status cli challenge =
      end
   | _ -> error_in "polling" code body
 
+
 let rec poll_until ?(sec=10) cli challenge =
   poll_challenge_status cli challenge >>= function
   | Error e  -> return_error e
@@ -204,6 +208,7 @@ let rec poll_until ?(sec=10) cli challenge =
      Logs.info (fun m -> m "Polling...");
      Unix.sleep sec;
      poll_until cli challenge
+
 
 let der_to_pem der =
   let der = Cstruct.of_string der in
@@ -214,6 +219,7 @@ let der_to_pem der =
   | None ->
      Error "I got gibberish while trying to decode the new certificate."
 
+
 let new_cert cli =
   let url = cli.d.new_cert in
   let der = X509.Encoding.cs_of_signing_request cli.csr |> Cstruct.to_string |> B64u.urlencode in
@@ -222,6 +228,7 @@ let new_cert cli =
   match code with
   | 201 -> return (der_to_pem body)
   | _ -> error_in "new-cert" code body
+
 
 let get_crt directory_url rsa_pem csr_pem acme_dir domain =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->

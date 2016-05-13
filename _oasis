@@ -1,12 +1,13 @@
-OASISFormat:  0.4
-OcamlVersion: >= 4.03.0
-Name:         acme
-Version:      0.1
-Synopsis:     ACME support for OCaml
-Plugins:      META (0.4), DevFiles (0.4)
-BuildTools:   ocamlbuild
-Authors:      maker <maker@tumbolandia.net>
-License:      FreeBSD
+OASISFormat:   0.4
+OcamlVersion:  >= 4.03.0
+Name:          acme
+Version:       0.1
+Synopsis:      ACME support for OCaml
+Plugins:       META (0.4), DevFiles (0.4)
+AlphaFeatures: ocamlbuild_more_args
+BuildTools:    ocamlbuild
+Authors:       maker <maker@tumbolandia.net>
+License:       BSD-2-clause
 
 Executable "oacmel"
   Path: src
@@ -28,3 +29,15 @@ Executable "test"
   CompiledObject: native
   BuildDepends: x509, cohttp, yojson, lwt, cohttp.lwt, base64,
                 nocrypto.lwt, zarith, oUnit, logs, logs.fmt
+
+
+Document api
+  Title:              Documentation and API reference
+  Type:               ocamlbuild (0.3)
+  BuildTools+:        ocamldoc
+  XOCamlbuildPath:    doc
+  XOCamlbuildModules: src/Acme,
+                      src/Jws,
+                      src/Jwk
+  Install:            false
+  XOCamlbuildExtraArgs: -docflags -colorize-code,-charset,utf-8
