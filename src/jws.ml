@@ -6,7 +6,7 @@ type jws_header_t = {
 
 let encode priv data nonce =
   let pub = Primitives.pub_of_priv priv in
-  let jwk = Jwk.encode pub in
+  let jwk = Jwk.encode (`Rsa pub) in
   let protected =
     Printf.sprintf {|{"alg":"RS256","jwk":%s,"nonce":"%s"}|}
                    jwk nonce
@@ -28,7 +28,7 @@ let decode_header protected_header =
      match maybe_jwk, maybe_alg with
      | _, None -> None
      | None, Some alg -> Some {alg; nonce; jwk=`Null}
-     | Some jwk, Some alg -> Some {alg; nonce; jwk= Jwk.decode_json jwk}
+     | Some jwk, Some alg -> Some {alg; nonce; jwk=Jwk.decode_json jwk}
 
 let decode ?(pub=`Null) data =
   match Json.of_string data with

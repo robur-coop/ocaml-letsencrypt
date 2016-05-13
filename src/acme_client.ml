@@ -140,14 +140,16 @@ let get_http01_challenge authorization =
         | Some t, Some u -> Ok {token=t; url=Uri.of_string u}
         | _, _ -> malformed_json authorization
 
+
 let do_http01_challenge cli challenge acme_dir =
   let token = challenge.token in
   let pk = Primitives.pub_of_priv cli.account_key in
-  let thumbprint = Jwk.thumbprint pk in
+  let thumbprint = Jwk.thumbprint (`Rsa pk) in
   let path = acme_dir ^ token in
   let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
   write_string path key_authorization;
   return_ok ()
+
 
 let new_authz cli domain =
   let url = cli.d.new_authz in
@@ -165,10 +167,11 @@ let new_authz cli domain =
   (* XXX. any other codes to handle? *)
   | _ -> error_in "new-authz" code body
 
+
 let challenge_met cli challenge =
   let token = challenge.token in
   let pub = Primitives.pub_of_priv cli.account_key in
-  let thumbprint = Jwk.thumbprint pub in
+  let thumbprint = Jwk.thumbprint (`Rsa pub) in
   let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
   (* write key_authorization *)
   let data =

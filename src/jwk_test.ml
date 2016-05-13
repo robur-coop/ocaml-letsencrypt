@@ -12,7 +12,7 @@ let n = B64u.urldecodez n64
 let e64 = "AQAB"
 let e = B64u.urldecodez e64
 
-let pub_key = Primitives.pub_of_z ~e ~n
+let pub_key = `Rsa (Primitives.pub_of_z ~e ~n)
 
 
 let test_encode text_ctx =
