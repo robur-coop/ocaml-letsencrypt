@@ -1,4 +1,3 @@
-open Acme.Client
 open Cmdliner
 open Lwt
 
@@ -53,7 +52,9 @@ let main rsa_pem csr_pem acme_dir domain debug =
   let log_level = if debug then Logs.Debug else Logs.Info in
   let rsa_pem = read_file rsa_pem in
   let csr_pem = read_file csr_pem in
-  let f = get_crt default_directory_url rsa_pem csr_pem acme_dir domain in
+  let f =
+    Acme.Client.get_crt default_directory_url rsa_pem csr_pem acme_dir domain
+  in
   Logs.set_level (Some log_level);
   Logs.set_reporter (Logs_fmt.reporter ());
   match Lwt_main.run f with
