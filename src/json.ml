@@ -13,6 +13,11 @@ let string_member member json =
   | `String s -> Some s
   | _ -> None
 
+let list_member member json =
+  match J.Util.member member json with
+  | `List l -> Some l
+  | _ -> None
+
 let json_member member json =
   match J.Util.member member json with
   | `Assoc j -> Some (`Assoc j)
