@@ -47,14 +47,6 @@ let http_get url =
   body |> Cohttp_lwt_body.to_string >>= fun body ->
   return (code, headers, body)
 
-let http_post_jws key nonce data url =
-  let body = Jws.encode key data nonce  in
-  let body_len = string_of_int (String.length body) in
-  let header = Header.init () in
-  let header = Header.add header "Content-Length" body_len in
-  let body = Cohttp_lwt_body.of_string body in
-  Client.post ~body:body ~headers:header url
-
 let get_header_or_fail name headers =
   match Header.get headers name with
   | Some nonce -> return nonce
@@ -97,10 +89,17 @@ let new_cli directory_url rsa_pem csr_pem =
        | Ok (next_nonce, d)  ->
           return_ok {account_key; csr; next_nonce; d}
 
-let cli_recv = http_get
 
-let cli_send cli data url =
-  http_post_jws cli.account_key cli.next_nonce data url >>= fun (resp, body) ->
+let http_post_jws cli data url =
+  let http_post key nonce data url =
+    let body = Jws.encode key data nonce  in
+    let body_len = string_of_int (String.length body) in
+    let header = Header.init () in
+    let header = Header.add header "Content-Length" body_len in
+    let body = Cohttp_lwt_body.of_string body in
+    Client.post ~body:body ~headers:header url
+  in
+  http_post cli.account_key cli.next_nonce data url >>= fun (resp, body) ->
   let code = resp |> Response.status |> Code.code_of_status in
   let headers = resp |> Response.headers in
   body |> Cohttp_lwt_body.to_string >>= fun body ->
@@ -110,6 +109,7 @@ let cli_send cli data url =
   cli.next_nonce <- next_nonce;
   return (code, headers, body)
 
+
 let new_reg cli =
   let url = cli.d.new_reg in
   let body =
@@ -117,7 +117,7 @@ let new_reg cli =
      * so it's a pain to fetch the terms. *)
     {|{"resource": "new-reg", "agreement": "https://letsencrypt.org/documents/LE-SA-v1.0.1-July-27-2015.pdf"}|}
   in
-  cli_send cli body url >>= fun (code, headers, body) ->
+  http_post_jws cli body url >>= fun (code, headers, body) ->
   (* here the "Location" header contains the registration uri.
    * However, it seems for a simple client this information is not necessary.
    * Also, in a bright future these prints should be transformed in logs.*)
@@ -154,7 +154,7 @@ let new_authz cli domain =
   let body = Printf.sprintf
     {|{"resource": "new-authz", "identifier": {"type": "dns", "value": "%s"}}|}
     domain in
-  cli_send cli body url >>= fun (code, headers, body) ->
+  http_post_jws cli body url >>= fun (code, headers, body) ->
   match code with
   | 201 ->
      begin
@@ -174,12 +174,12 @@ let challenge_met cli challenge =
   let data =
     Printf.sprintf {|{"resource": "challenge", "keyAuthorization": "%s"}|}
                    key_authorization in
-  cli_send cli data challenge.url >>= fun _ ->
+  http_post_jws cli data challenge.url >>= fun _ ->
   (* XXX. here we should deal with the resulting codes, at least. *)
   return_ok ()
 
 let poll_challenge_status cli challenge =
-  cli_recv challenge.url >>= fun (code, headers, body) ->
+  http_get challenge.url >>= fun (code, headers, body) ->
   match Json.of_string body with
   | Some challenge_status ->
      begin
@@ -194,12 +194,12 @@ let poll_challenge_status cli challenge =
   | _ -> error_in "polling" code body
 
 let rec poll_until ?(sec=10) cli challenge =
-  Unix.sleep sec;
   poll_challenge_status cli challenge >>= function
   | Error e  -> return_error e
   | Ok false -> return_ok ()
   | Ok true  ->
      Logs.info (fun m -> m "Polling...");
+     Unix.sleep sec;
      poll_until cli challenge
 
 let der_to_pem der =
@@ -215,7 +215,7 @@ let new_cert cli =
   let url = cli.d.new_cert in
   let der = X509.Encoding.cs_of_signing_request cli.csr |> Cstruct.to_string |> B64u.urlencode in
   let data = Printf.sprintf {|{"resource": "new-cert", "csr": "%s"}|} der in
-  cli_send cli data url >>= fun (code, headers, body) ->
+  http_post_jws cli data url >>= fun (code, headers, body) ->
   match code with
   | 201 -> return (der_to_pem body)
   | _ -> error_in "new-cert" code body
