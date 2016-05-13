@@ -6,7 +6,7 @@ Synopsis:     ACME support for OCaml
 Plugins:      META (0.4), DevFiles (0.4)
 BuildTools:   ocamlbuild
 Authors:      maker <maker@tumbolandia.net>
-License:      WTFPL
+License:      FreeBSD
 
 Executable "oacmel"
   Path: src
