@@ -14,14 +14,15 @@ Executable "oacmel"
   MainIs: oacmel.ml
   CompiledObject: native
   BuildDepends: x509, cohttp, yojson, lwt, cohttp.lwt, base64,
-                nocrypto.lwt, zarith, cmdliner, logs, logs.fmt
+                nocrypto, nocrypto.lwt, zarith, cmdliner, logs,
+                logs.fmt
 
 Executable "acme_server"
   Path: src
   MainIs: acme_server.ml
   CompiledObject: native
   BuildDepends: x509, cohttp, yojson, lwt, cohttp.lwt, base64,
-                nocrypto.lwt, zarith, oUnit, dispatch
+                nocrypto, nocrypto.lwt, zarith, oUnit, dispatch
 
 Executable "test"
   Path: src
@@ -30,6 +31,9 @@ Executable "test"
   BuildDepends: x509, cohttp, yojson, lwt, cohttp.lwt, base64,
                 nocrypto.lwt, zarith, oUnit, logs, logs.fmt
 
+Test it
+  Command   : $test
+  Run      $: flag(tests)
 
 Document api
   Title:              Documentation and API reference

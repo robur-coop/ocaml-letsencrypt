@@ -1,0 +1,28 @@
+opam-version: "1.2"
+name: "acme"
+version: "0.1"
+maintainer: "Michele Mu <maker@tumbolandia.net>"
+author: "Michele Mu <maker@tumbolandia.net>"
+license: "BSD-2-clause"
+dev-repo: "https://github.com/mmaker/ocaml-acme"
+build: [
+    [ "./configure" "--prefix=%{prefix}%" "--%{ounit:enable}%-tests" ]
+    [ make ]
+]
+install: [make "install"]
+remove: ["ocamlfind" "remove" "project"]
+depends: [
+    "ocamlfind" {build}
+    "ocamlbuild" {build}
+    "base64"
+    "cmdliner"
+    "cohttp"
+    "logs"
+    "lwt"
+    "nocrypto"
+    "x509"
+    "yojson"
+    "ounit" {test}
+]
+
+build-test: [ make "test" ]
