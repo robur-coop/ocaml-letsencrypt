@@ -6,6 +6,6 @@ open Topkg
 let () =
   Pkg.describe "acme" @@ fun c ->
   Ok [
-    Pkg.bin ~dst:"oacmel" "src/acme_client";
+    Pkg.bin ~dst:"oacmel" "src/oacmel";
     Pkg.test "src/tests";
   ]
