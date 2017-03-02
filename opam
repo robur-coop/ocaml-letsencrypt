@@ -18,7 +18,7 @@ depends: [
     "cmdliner"
     "cohttp"
     "logs"
-    "lwt"
+    "lwt" {>= "2.6.0"}
     "nocrypto"
     "x509"
     "yojson"
