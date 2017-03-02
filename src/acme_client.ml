@@ -228,24 +228,11 @@ let new_cert cli =
 
 let get_crt directory_url rsa_pem csr_pem acme_dir domain =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
-  new_cli directory_url rsa_pem csr_pem >>= function
-  | Error e -> return_error e
-  | Ok cli ->
-     new_reg cli >>= function
-     | Error e -> return_error e
-     | Ok () ->
-        new_authz cli domain >>= function
-        | Error e -> return_error e
-        | Ok challenge ->
-           do_http01_challenge cli challenge acme_dir >>= function
-           | Error e -> return_error e
-           | Ok () ->
-              challenge_met cli challenge >>= function
-              | Error e -> return_error e
-              | Ok () ->
-                 poll_until cli challenge >>= function
-                 | Error e -> return_error e
-                 | Ok () ->
-                    new_cert cli >>= function
-                    | Error e -> return_error e
-                    | Ok pem -> return_ok pem
+  let open Lwt_result in
+  new_cli directory_url rsa_pem csr_pem >>= fun cli ->
+  new_reg cli >>= fun () ->
+  new_authz cli domain >>= fun challenge ->
+  do_http01_challenge cli challenge acme_dir >>= fun () ->
+  challenge_met cli challenge >>= fun () ->
+  poll_until cli challenge >>= fun () ->
+  new_cert cli >>= fun pem -> return_ok pem
