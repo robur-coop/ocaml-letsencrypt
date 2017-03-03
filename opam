@@ -6,18 +6,17 @@ author: "Michele Mu <maker@tumbolandia.net>"
 license: "BSD-2-clause"
 dev-repo: "https://github.com/mmaker/ocaml-acme"
 build: [
-    [ "./configure" "--prefix=%{prefix}%" "--%{ounit:enable}%-tests" ]
-    [ make ]
+  "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%"
 ]
-install: [make "install"]
-remove: ["ocamlfind" "remove" "project"]
 depends: [
     "ocamlfind" {build}
     "ocamlbuild" {build}
+    "topkg" {build}
     "base64"
     "cmdliner"
     "cohttp"
     "logs"
+    "fmt"
     "lwt" {>= "2.6.0"}
     "nocrypto"
     "x509"
@@ -25,4 +24,7 @@ depends: [
     "ounit" {test}
 ]
 
-build-test: [ make "test" ]
+build-test: [
+  [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "true" ]
+  [ "ocaml" "pkg/pkg.ml" "test" ]
+]
