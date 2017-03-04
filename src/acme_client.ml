@@ -28,14 +28,6 @@ let error_in endpoint code body =
   let msg = errf endpoint code body in
   return_error msg
 
-(** I guess for now we can leave a function here of type
- * bytes -> bytes -> unit
- * to handle the writing of the challenge into a file. *)
-let write_string filename data =
-  let oc = open_out filename in
-  Printf.fprintf oc "%s" data;
-  close_out oc
-
 let http_get url =
   Client.get url >>= fun (resp, body) ->
   let code = resp |> Response.status |> Code.code_of_status in
@@ -139,15 +131,13 @@ let get_http01_challenge authorization =
         | _, _ -> malformed_json authorization
 
 
-let do_http01_challenge cli challenge acme_dir =
+let do_http01_challenge cli challenge writef =
   let token = challenge.token in
   let pk = Primitives.pub_of_priv cli.account_key in
   let thumbprint = Jwk.thumbprint (`Rsa pk) in
-  let path = acme_dir ^ token in
   let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
-  write_string path key_authorization;
+  writef token key_authorization;
   return_ok ()
-
 
 let new_authz cli domain =
   let url = cli.d.new_authz in
@@ -226,13 +216,13 @@ let new_cert cli =
   | _ -> error_in "new-cert" code body
 
 
-let get_crt directory_url rsa_pem csr_pem acme_dir domain =
+let get_crt directory_url rsa_pem csr_pem writef domain =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
   let open Lwt_result in
   new_cli directory_url rsa_pem csr_pem >>= fun cli ->
   new_reg cli >>= fun () ->
   new_authz cli domain >>= fun challenge ->
-  do_http01_challenge cli challenge acme_dir >>= fun () ->
+  do_http01_challenge cli challenge writef >>= fun () ->
   challenge_met cli challenge >>= fun () ->
   poll_until cli challenge >>= fun () ->
   new_cert cli >>= fun pem -> return_ok pem

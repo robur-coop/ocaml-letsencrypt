@@ -18,6 +18,14 @@ let read_file filename =
   input ic ret 0 bufsize |> ignore;
   ret
 
+(** I guess for now we can leave a function here of type
+ * bytes -> bytes -> unit
+ * to handle the writing of the challenge into a file. *)
+let write_string filename data =
+  let oc = open_out filename in
+  Printf.fprintf oc "%s" data;
+  close_out oc
+
 let rsa_pem_arg =
   let doc = "File containing the PEM-encoded RSA private key." in
   Arg.(value & opt string "priv.key" & info ["account-key"] ~docv:"FILE" ~doc)
@@ -50,10 +58,14 @@ let debug_arg =
 
 let main rsa_pem csr_pem acme_dir domain debug =
   let log_level = if debug then Logs.Debug else Logs.Info in
+  let writef token key =
+    let path = acme_dir ^ token in
+    write_string path key
+  in
   let rsa_pem = read_file rsa_pem in
   let csr_pem = read_file csr_pem in
   let f =
-    Acme.Client.get_crt default_directory_url rsa_pem csr_pem acme_dir domain
+    Acme.Client.get_crt default_directory_url rsa_pem csr_pem writef domain
   in
   Logs.set_level (Some log_level);
   Logs.set_reporter (Logs_fmt.reporter ());
