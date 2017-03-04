@@ -18,10 +18,6 @@ type challenge_t = {
     token: string;
   }
 
-(* May these functions be added to Lwt one day. *)
-let return_ok a = return (Ok a)
-let return_error e = return (Error e)
-
 let malformed_json j =
   let msg = Printf.sprintf "malformed json: %s" (Json.to_string j) in
   Error msg
