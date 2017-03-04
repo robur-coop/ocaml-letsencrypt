@@ -100,7 +100,9 @@ let http_post_jws cli data url =
   let code = resp |> Response.status |> Code.code_of_status in
   let headers = resp |> Response.headers in
   body |> Cohttp_lwt_body.to_string >>= fun body ->
-  Logs.debug (fun m -> m "Got code: %d - body %s" code (String.escaped body));
+  Logs.debug (fun m -> m "Got code: %d" code);
+  Logs.debug (fun m -> m "headers \"%s\"" (String.escaped @@ Cohttp.Header.to_string headers));
+  Logs.debug (fun m -> m "body \"%s\"" (String.escaped body));
   extract_nonce headers >>= fun next_nonce ->
   (* XXX: is this like cheating? *)
   cli.next_nonce <- next_nonce;
