@@ -20,6 +20,7 @@ depends: [
     "lwt" {>= "2.6.0"}
     "nocrypto"
     "x509"
+    "tls"
     "yojson"
     "ounit" {test}
 ]
