@@ -1,0 +1,19 @@
+name="acme"
+description="ACME client"
+version="0.1"
+requires="x509,cohttp,yojson,lwt,cohttp.lwt,base64,nocrypto,nocrypto.lwt,zarith,cmdliner,logs,logs.fmt"
+archive(byte)="acme.cma"
+archive(native)="acme.cmxa"
+plugin(byte)="acme.cma"
+plugin(native)="acme.cmxs"
+
+package "client" (
+    name="acme"
+    description="ACME client for debugging yaaaay"
+    version="0.1"
+    requires="x509,cohttp,yojson,lwt,cohttp.lwt,base64,nocrypto,nocrypto.lwt,zarith,cmdliner,logs,logs.fmt"
+    archive(byte)="acme_client.cma"
+    archive(native)="acme_client.cmxa"
+    plugin(byte)="acme_client.cma"
+    plugin(native)="acme_client.cmxs"
+)
