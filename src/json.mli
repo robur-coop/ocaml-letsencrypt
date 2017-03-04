@@ -1,4 +1,4 @@
-type t
+type t = Yojson.Basic.json
 
 val of_string : string -> t option
 val to_string : ?comma:string -> ?colon:string -> t -> string
