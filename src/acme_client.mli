@@ -6,7 +6,6 @@ type challenge_t = private {
 
 val new_cli : string -> string -> string -> (t, string) result Lwt.t
 val new_reg : t -> (Cohttp.Link.t list, string) result Lwt.t
-val get_terms_of_service : Cohttp.Link.t list -> Cohttp.Link.t option
 val get_http01_challenge : Json.t -> (challenge_t, string) result
 val do_http01_challenge : t -> challenge_t -> string -> (unit, 'a) result Lwt.t
 val new_authz : t -> string -> (challenge_t, string) result Lwt.t
