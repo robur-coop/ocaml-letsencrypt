@@ -57,7 +57,7 @@ let rec to_string ?(comma=",") ?(colon=":") = function
   | `Assoc a ->
      let serialize_pair (key, value) =
        let sval = (to_string ~comma ~colon) value in
-       key ^ colon ^ sval
+       "\"" ^ key ^ "\"" ^ colon ^ sval
      in
      let s = List.map serialize_pair a in
      "{" ^ (string_of_list comma s) ^ "}"
