@@ -92,28 +92,55 @@ let http_post_jws cli data url =
   let code = resp |> Response.status |> Code.code_of_status in
   let headers = resp |> Response.headers in
   body |> Cohttp_lwt_body.to_string >>= fun body ->
-  Logs.debug (fun m -> m "Got code: %d - body %s" code (String.escaped body));
+  Logs.debug (fun m -> m "Got code: %d" code);
+  Logs.debug (fun m -> m "headers \"%s\"" (String.escaped @@ Cohttp.Header.to_string headers));
+  Logs.debug (fun m -> m "body \"%s\"" (String.escaped body));
   extract_nonce headers >>= fun next_nonce ->
   (* XXX: is this like cheating? *)
   cli.next_nonce <- next_nonce;
   return (code, headers, body)
 
 
+let get_terms_of_service links =
+  try Some (List.find
+              (fun (link : Cohttp.Link.t) ->
+                 link.Cohttp.Link.arc.Cohttp.Link.Arc.relation =
+                 [Cohttp.Link.Rel.extension (Uri.of_string "terms-of-service")])
+              links)
+  with Not_found -> None
+
 let new_reg cli =
   let url = cli.d.new_reg in
+  let body = {|{"resource": "new-reg"}|} in
+  http_post_jws cli body url >>= fun (code, headers, body) ->
+  match code with
+  | 201 ->
+    (match  Cohttp.Header.get_location headers with
+     | Some accept_url ->
+       let terms = match Cohttp.Header.get_links headers |> get_terms_of_service with
+         | Some terms -> terms
+         | None -> failwith "Accept url without terms-of-service"
+       in
+       Logs.info (fun m -> m "Must accept terms."); return_ok (Some (terms, accept_url))
+     | None ->
+       Logs.info (fun m -> m "Account created.");  return_ok None)
+  | 409 ->
+    Logs.info (fun m -> m "Already registered."); return_ok None
+  | _   -> error_in "new-reg" code body
+
+
+let accept_terms cli ~url ~terms =
   let body =
-    (* XXX. this is letsencrypt specific. Also they are implementing acme-01
-     * so it's a pain to fetch the terms. *)
-    {|{"resource": "new-reg", "agreement": "https://letsencrypt.org/documents/LE-SA-v1.0.1-July-27-2015.pdf"}|}
+    Json.to_string (`Assoc [
+        ("resource", `String "reg");
+        ("agreement", `String (Uri.to_string terms));
+      ])
   in
   http_post_jws cli body url >>= fun (code, headers, body) ->
-  (* here the "Location" header contains the registration uri.
-   * However, it seems for a simple client this information is not necessary.
-   * Also, in a bright future these prints should be transformed in logs.*)
   match code with
-  | 201 -> Logs.info (fun m -> m "Account created.");  return_ok ()
+  | 202 -> Logs.info (fun m -> m "Terms accepted."); return_ok ()
   | 409 -> Logs.info (fun m -> m "Already registered."); return_ok ()
-  | _   -> error_in "new-reg" code body
+  | _ -> error_in "accept_terms" code body
 
 
 let get_http01_challenge authorization =
@@ -218,11 +245,34 @@ let new_cert cli =
 
 let get_crt directory_url rsa_pem csr_pem writef domain =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
-  let open Lwt_result in
-  new_cli directory_url rsa_pem csr_pem >>= fun cli ->
-  new_reg cli >>= fun () ->
-  new_authz cli domain >>= fun challenge ->
-  do_http01_challenge cli challenge writef >>= fun () ->
-  challenge_met cli challenge >>= fun () ->
-  poll_until cli challenge >>= fun () ->
-  new_cert cli >>= fun pem -> return_ok pem
+  (* XXX. this could be made prettier by using Lwt_result *)
+  new_cli directory_url rsa_pem csr_pem >>= function
+  | Error e -> return_error e
+  | Ok cli ->
+    new_reg cli >>= function
+    | Error e -> return_error e
+    | Ok maybe_terms ->
+      (match maybe_terms with
+         Some (terms_link, accept_url) ->
+         let terms = terms_link.Cohttp.Link.target in
+         Printf.printf "Automatically accepting terms at %s\n" (Uri.to_string terms);
+         accept_terms cli ~url:accept_url ~terms
+       | None ->
+         Logs.info (fun m ->  m "No ToS."); return_ok ()) >>= function
+      | Error e -> return_error e
+      | Ok () ->
+        new_authz cli domain >>= function
+        | Error e -> return_error e
+        | Ok challenge ->
+          do_http01_challenge cli challenge writef >>= function
+          | Error e -> return_error e
+          | Ok () ->
+            challenge_met cli challenge >>= function
+            | Error e -> return_error e
+            | Ok () ->
+              poll_until cli challenge >>= function
+              | Error e -> return_error e
+              | Ok () ->
+                new_cert cli >>= function
+                | Error e -> return_error e
+                | Ok pem -> return_ok pem
