@@ -25,7 +25,7 @@ module Client: sig
 
     type t
 
-    val get_crt : string -> string -> string -> (string -> string -> unit) ->
+    val get_crt : string -> string -> string -> (string -> string -> string -> unit) ->
                   (string, string) result Lwt.t
     (** [get_crt directory_url rsa_pem csr_pem] asks the CA identified
         by [directory_url] for signing [csr_pem] with account key [account_pem]

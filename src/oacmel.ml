@@ -13,9 +13,9 @@ let read_file filename =
   input ic ret 0 bufsize |> ignore;
   ret
 
-let prettify_dns_solver printf token key =
+let prettify_dns_solver printf domain token key =
   let dns_string data =
-    Printf.sprintf "_acme-challenge.DOMAIN. 300 IN TXT \"%s\"\n" data
+    Printf.sprintf "_acme-challenge.%s. 300 IN TXT \"%s\"\n" domain data
   in
   let ka_hash = Primitives.sha256 key in
   let b64_ka_hash = B64u.urlencode ka_hash in
