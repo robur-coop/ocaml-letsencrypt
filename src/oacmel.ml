@@ -37,21 +37,11 @@ let acme_dir_arg =
     "http://example.com/.well-known/acme-challenge/" in
   Arg.(value & opt string default_path & info ["acme_dir"] ~docv:"DIR" ~doc)
 
-(* XXX. the information for all domains is already available in the csr,
- * there should be no need to have it as parameter.
- * However, the X509  doesn't export an API for this. *)
-let domain_arg =
-  (* XXX. please remove me *)
-  let default_host = "test.tumbolandia.net" in
-  let doc = "The domain to validate." in
-  (* XXX. this should be an uri, non optional, from which we take only the host *)
-  Arg.(value & opt string default_host & info ["H"; "host"] ~docv:"URL" ~doc)
-
 let debug_arg =
   let doc = "Turn on debug logging." in
   Arg.(value & flag & info ["v"] ~doc)
 
-let main rsa_pem csr_pem acme_dir domain debug =
+let main rsa_pem csr_pem acme_dir debug =
   let log_level = if debug then Logs.Debug else Logs.Info in
   let writef token key =
     let path = acme_dir ^ token in
@@ -60,7 +50,7 @@ let main rsa_pem csr_pem acme_dir domain debug =
   let rsa_pem = read_file rsa_pem in
   let csr_pem = read_file csr_pem in
   let f =
-    Acme.Client.get_crt default_directory_url rsa_pem csr_pem writef domain
+    Acme.Client.get_crt default_directory_url rsa_pem csr_pem writef
   in
   Logs.set_level (Some log_level);
   Logs.set_reporter (Logs_fmt.reporter ());
@@ -84,7 +74,6 @@ let () =
                   $ rsa_pem_arg
                   $ csr_pem_arg
                   $ acme_dir_arg
-                  $ domain_arg
                   $ debug_arg) in
   match Term.eval (cli, info) with
   | `Error _ -> exit 1

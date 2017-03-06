@@ -25,11 +25,11 @@ module Client: sig
 
     type t
 
-    val get_crt : string -> string -> string -> (string -> string -> unit) -> string ->
+    val get_crt : string -> string -> string -> (string -> string -> unit) ->
                   (string, string) result Lwt.t
-    (** [get_crt directory_url rsa_pem csr_pem domain] asks the CA identified
+    (** [get_crt directory_url rsa_pem csr_pem] asks the CA identified
         by [directory_url] for signing [csr_pem] with account key [account_pem]
-        for the domain [domain].
+        for all domains in [csr_pem].
         The result is either a string result cotaining the pem-encoded signed
         certificate, or an error with a string describing what went wrong. *)
 

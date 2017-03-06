@@ -260,9 +260,8 @@ let new_cert cli =
   | _ -> error_in "new-cert" code body
 
 
-let get_crt directory_url rsa_pem csr_pem writef domain =
+let get_crt directory_url rsa_pem csr_pem writef =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
-  (* XXX. this could be made prettier by using Lwt_result *)
   let open Lwt_result.Infix in
   new_cli directory_url rsa_pem csr_pem >>= fun cli ->
   new_reg cli >>= (function
@@ -272,9 +271,16 @@ let get_crt directory_url rsa_pem csr_pem writef domain =
         accept_terms cli ~url:accept_url ~terms
       | None ->
         Logs.info (fun m ->  m "No ToS."); return_ok ()) >>= fun () ->
-  new_authz cli domain >>= fun challenge ->
-  do_dns01_challenge cli challenge writef >>= fun () ->
-  challenge_met cli challenge >>= fun () ->
-  poll_until cli challenge >>= fun () ->
+  let csr = Pem.Certificate_signing_request.of_pem_cstruct1 (Cstruct.of_string csr_pem) in
+  (domains_of_csr csr)
+  |> List.map (fun domain ->
+      fun () ->
+        new_authz cli domain >>= fun challenge ->
+        do_dns01_challenge cli challenge writef >>= fun () ->
+        challenge_met cli challenge >>= fun () ->
+        poll_until cli challenge)
+  |> List.fold_left
+    Lwt_result.bind (return_ok ())
+  >>= fun () ->
   new_cert cli >>= fun pem ->
   return_ok pem
