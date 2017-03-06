@@ -6,6 +6,9 @@
     Currently, this library has been tested (and is working) only with
     Letsencrypt servers.
  *)
+val letsencrypt_url : string
+val letsencrypt_staging_url : string
+
 
 
 (** ACME Client.

@@ -1,13 +1,8 @@
 open Cmdliner
 open Lwt
 
-(* XXX. Actually, this is not really a "default".
- * - letsencrypt wants you to accept the terms of agreement,
- *   but the url for these is on a non-standard endpoint /terms
- *)
-let default_directory_url = "https://acme-v01.api.letsencrypt.org/directory"
-(* let default_directory_url = "https://acme-staging.api.letsencrypt.org/directory" *)
 
+let default_directory_url = Acme_common.letsencrypt_staging_url
 
 (* XXX. Perhaps there's a more decent way in OCaml for reading a file? *)
 (* XXX. we are not dealing with exceptions here. *)
