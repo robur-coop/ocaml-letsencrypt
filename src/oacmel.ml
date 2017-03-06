@@ -13,16 +13,6 @@ let read_file filename =
   input ic ret 0 bufsize |> ignore;
   ret
 
-let prettify_dns_solver printf token key =
-  let dns_string data =
-    Printf.sprintf "_acme-challenge.DOMAIN. 300 IN TXT \"%s\"\n" data
-  in
-  let ka_hash = Primitives.sha256 key in
-  let b64_ka_hash = B64u.urlencode ka_hash in
-  dns_string b64_ka_hash |> printf
-
-let default_dns_solver = prettify_dns_solver print_endline
-
 let default_http_solver token key =
   let write_string filename data =
     let oc = open_out filename in
@@ -56,8 +46,9 @@ let main rsa_pem csr_pem acme_dir debug =
   let log_level = if debug then Logs.Debug else Logs.Info in
   let rsa_pem = read_file rsa_pem in
   let csr_pem = read_file csr_pem in
+  let solver = Acme_client.default_dns_solver in
   let f =
-    Acme.Client.get_crt default_directory_url rsa_pem csr_pem default_dns_solver
+    Acme.Client.get_crt default_directory_url rsa_pem csr_pem ~solver
   in
   Logs.set_level (Some log_level);
   Logs.set_reporter (Logs_fmt.reporter ());

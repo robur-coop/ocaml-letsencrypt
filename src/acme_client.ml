@@ -18,6 +18,8 @@ type challenge_t = {
     token: string;
   }
 
+
+
 let malformed_json j =
   let msg = Printf.sprintf "malformed json: %s" (Json.to_string j) in
   Error msg
@@ -143,7 +145,6 @@ let accept_terms cli ~url ~terms =
   | _ -> error_in "accept_terms" code body
 
 
-
 (*
    XXX. probably the structure of challenges different from http-01 and
    dns-01 is different, but for the two and only supported ones it's
@@ -163,27 +164,55 @@ let get_challenge challenge_filter authorization =
         | _, _ -> malformed_json authorization
 
 
-let do_challenge cli challenge writef =
-  let token = challenge.token in
-  let pk = Primitives.pub_of_priv cli.account_key in
-  let thumbprint = Jwk.thumbprint (`Rsa pk) in
-  let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
-  writef token key_authorization;
-  return_ok ()
+type solver_t = {
+    get_challenge : Json.t -> (challenge_t, string) Result.result;
+    solve_challenge : t -> challenge_t -> (unit, string) Result.result Lwt.t ;
+}
 
+let http_solver writef =
+  let get_http01_challenge =
+    let is_http01 c = Json.string_member "type" c = Some "http-01" in
+    get_challenge is_http01
+  in
+  let solve_http01_challenge cli challenge =
+    let token = challenge.token in
+    let pk = Primitives.pub_of_priv cli.account_key in
+    let thumbprint = Jwk.thumbprint (`Rsa pk) in
+    let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
+    writef token key_authorization;
+    return_ok ()
+  in
+  { get_challenge = get_http01_challenge;
+    solve_challenge = solve_http01_challenge }
 
-let get_http01_challenge =
-  let is_http01 c = Json.string_member "type" c = Some "http-01" in
-  get_challenge is_http01
+let default_http_solver =
+  let default_writef = Printf.printf "Now write %s in %s\n" in
+  http_solver default_writef
 
-let get_dns01_challenge =
-  let is_dns01 c = Json.string_member "type" c = Some "dns-01" in
-  get_challenge is_dns01
+let dns_solver writef =
+  let get_dns01_challenge =
+    let is_dns01 c = Json.string_member "type" c = Some "dns-01" in
+    get_challenge is_dns01
+  in
+  let solve_dns01_challenge cli challenge =
+    let token = challenge.token in
+    let pk = Primitives.pub_of_priv cli.account_key in
+    let thumbprint = Jwk.thumbprint (`Rsa pk) in
+    let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
+    let solution = Primitives.sha256 key_authorization |> B64u.urlencode in
+    writef solution;
+    return_ok ()
+  in
+  { get_challenge = get_dns01_challenge ;
+    solve_challenge = solve_dns01_challenge }
 
-let do_dns01_challenge = do_challenge
-let do_http01_challenge = do_challenge
+let default_dns_solver =
+  let default_writef =
+    Printf.printf "_acme-challenge.DOMAIN. 300 IN TXT \"%s\"\n"
+  in
+  dns_solver default_writef
 
-let new_authz cli domain =
+let new_authz cli domain get_challenge =
   let url = cli.d.new_authz in
   let body = Printf.sprintf
     {|{"resource": "new-authz", "identifier": {"type": "dns", "value": "%s"}}|}
@@ -193,7 +222,7 @@ let new_authz cli domain =
   | 201 ->
      begin
        match Json.of_string body with
-       | Some authorization -> return (get_dns01_challenge authorization)
+       | Some authorization -> return (get_challenge authorization)
        | None -> error_in "new-auth" code body
      end
   (* XXX. any other codes to handle? *)
@@ -260,27 +289,37 @@ let new_cert cli =
   | _ -> error_in "new-cert" code body
 
 
-let get_crt directory_url rsa_pem csr_pem writef =
+let get_crt directory_url rsa_pem csr_pem ?(solver=default_dns_solver) =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
   let open Lwt_result.Infix in
+  (* create a new client *)
   new_cli directory_url rsa_pem csr_pem >>= fun cli ->
+
+  (* if the client didn't register, then register. Otherwise proceed *)
   new_reg cli >>= (function
       | Some (terms_link, accept_url) ->
         let terms = terms_link.Cohttp.Link.target in
-        Printf.printf "Automatically accepting terms at %s\n" (Uri.to_string terms);
+         Printf.printf "Accepting terms at %s\n" (Uri.to_string terms);
         accept_terms cli ~url:accept_url ~terms
       | None ->
-        Logs.info (fun m ->  m "No ToS."); return_ok ()) >>= fun () ->
+         Logs.info (fun m ->  m "No ToS."); return_ok ())
+  >>= fun () ->
+  (* for all domains, ask the ACME server for a certificate *)
   let csr = Pem.Certificate_signing_request.of_pem_cstruct1 (Cstruct.of_string csr_pem) in
-  (domains_of_csr csr)
-  |> List.map (fun domain ->
-      fun () ->
-        new_authz cli domain >>= fun challenge ->
-        do_dns01_challenge cli challenge writef >>= fun () ->
+  let domains = domains_of_csr csr in
+  Lwt_list.fold_left_s
+    (fun r domain ->
+     match r with
+     | Ok () ->
+        new_authz cli domain solver.get_challenge >>= fun challenge ->
+        solver.solve_challenge cli challenge >>= fun () ->
         challenge_met cli challenge >>= fun () ->
-        poll_until cli challenge)
-  |> List.fold_left
-    Lwt_result.bind (return_ok ())
+        poll_until cli challenge
+     | Error r ->
+        Lwt.return_error "oh fuck"
+    )
+    (Ok ())
+    domains
   >>= fun () ->
   new_cert cli >>= fun pem ->
   return_ok pem

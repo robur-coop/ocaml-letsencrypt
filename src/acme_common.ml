@@ -33,7 +33,8 @@ let domains_of_csr csr =
     |> (function
         | `CN name -> [name]
         | _ -> assert false)
-  else subject_alt_names
+  else  subject_alt_names
+
 
 
 let letsencrypt_url =
