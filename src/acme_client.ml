@@ -187,7 +187,9 @@ let http_solver writef =
     solve_challenge = solve_http01_challenge }
 
 let default_http_solver =
-  let default_writef = Printf.printf "Domain %s wants file %s content %s\n" in
+  let default_writef domain file content =
+    Logs.info (fun f -> f "Domain %s wants file %s content %s\n" domain file content)
+  in
   http_solver default_writef
 
 let dns_solver writef =
@@ -208,8 +210,8 @@ let dns_solver writef =
     solve_challenge = solve_dns01_challenge }
 
 let default_dns_solver =
-  let default_writef =
-    Printf.printf "_acme-challenge.%s. 300 IN TXT \"%s\"\n"
+  let default_writef domain record =
+    Logs.info (fun f -> f "_acme-challenge.%s. 300 IN TXT \"%s\"\n" domain record)
   in
   dns_solver default_writef
 
