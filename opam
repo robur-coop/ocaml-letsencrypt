@@ -4,7 +4,8 @@ version: "0.1"
 maintainer: "Michele Mu <maker@tumbolandia.net>"
 author: "Michele Mu <maker@tumbolandia.net>"
 license: "BSD-2-clause"
-dev-repo: "https://github.com/mmaker/ocaml-acme"
+dev-repo: "https://github.com/mmaker/ocaml-acme.git"
+homepage: "https://github.com/mmaker/ocaml-acme"
 build: [
   "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%"
 ]
