@@ -21,6 +21,9 @@ let write_string filename data =
   Printf.fprintf oc "%s" data;
   close_out oc
 
+let print_dns_string domain data =
+  Printf.fprintf stdout "_acme-challenge.%s. 300 IN TXT \"%s\"\n" domain data
+
 let rsa_pem_arg =
   let doc = "File containing the PEM-encoded RSA private key." in
   Arg.(value & opt string "priv.key" & info ["account-key"] ~docv:"FILE" ~doc)
@@ -53,9 +56,10 @@ let debug_arg =
 
 let main rsa_pem csr_pem acme_dir domain debug =
   let log_level = if debug then Logs.Debug else Logs.Info in
-  let writef token key =
-    let path = acme_dir ^ token in
-    write_string path key
+  let writef token key_authorization =
+    let ka_hash = Primitives.sha256 key_authorization in
+    let b64_ka_hash = B64u.urlencode ka_hash in
+    print_dns_string domain b64_ka_hash
   in
   let rsa_pem = read_file rsa_pem in
   let csr_pem = read_file csr_pem in
