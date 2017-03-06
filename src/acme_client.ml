@@ -263,33 +263,18 @@ let new_cert cli =
 let get_crt directory_url rsa_pem csr_pem writef domain =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
   (* XXX. this could be made prettier by using Lwt_result *)
-  new_cli directory_url rsa_pem csr_pem >>= function
-  | Error e -> return_error e
-  | Ok cli ->
-    new_reg cli >>= function
-    | Error e -> return_error e
-    | Ok maybe_terms ->
-      (match maybe_terms with
-         Some (terms_link, accept_url) ->
-         let terms = terms_link.Cohttp.Link.target in
-         Printf.printf "Automatically accepting terms at %s\n" (Uri.to_string terms);
-         accept_terms cli ~url:accept_url ~terms
-       | None ->
-         Logs.info (fun m ->  m "No ToS."); return_ok ()) >>= function
-      | Error e -> return_error e
-      | Ok () ->
-        new_authz cli domain >>= function
-        | Error e -> return_error e
-        | Ok challenge ->
-          do_dns01_challenge cli challenge writef >>= function
-          | Error e -> return_error e
-          | Ok () ->
-            challenge_met cli challenge >>= function
-            | Error e -> return_error e
-            | Ok () ->
-              poll_until cli challenge >>= function
-              | Error e -> return_error e
-              | Ok () ->
-                new_cert cli >>= function
-                | Error e -> return_error e
-                | Ok pem -> return_ok pem
+  let open Lwt_result.Infix in
+  new_cli directory_url rsa_pem csr_pem >>= fun cli ->
+  new_reg cli >>= (function
+      | Some (terms_link, accept_url) ->
+        let terms = terms_link.Cohttp.Link.target in
+        Printf.printf "Automatically accepting terms at %s\n" (Uri.to_string terms);
+        accept_terms cli ~url:accept_url ~terms
+      | None ->
+        Logs.info (fun m ->  m "No ToS."); return_ok ()) >>= fun () ->
+  new_authz cli domain >>= fun challenge ->
+  do_dns01_challenge cli challenge writef >>= fun () ->
+  challenge_met cli challenge >>= fun () ->
+  poll_until cli challenge >>= fun () ->
+  new_cert cli >>= fun pem ->
+  return_ok pem
