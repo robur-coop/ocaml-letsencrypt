@@ -8,5 +8,4 @@ val get_crt : string ->
               string ->
               string ->
               (string -> string -> unit)  ->
-              string ->
               (string, string) Result.result Lwt.t
