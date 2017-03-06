@@ -143,12 +143,17 @@ let accept_terms cli ~url ~terms =
   | _ -> error_in "accept_terms" code body
 
 
-let get_http01_challenge authorization =
+
+(*
+   XXX. probably the structure of challenges different from http-01 and
+   dns-01 is different, but for the two and only supported ones it's
+   probably fine.
+ *)
+let get_challenge challenge_filter authorization =
   match Json.list_member "challenges" authorization with
   | None -> malformed_json authorization
   | Some challenges ->
-     let is_http01 c = Json.string_member "type" c = Some"http-01" in
-     match List.filter is_http01 challenges with
+     match List.filter challenge_filter challenges with
      | []  -> Error "No supported challenges found."
      | challenge :: _ ->
         let token = Json.string_member "token" challenge in
@@ -158,13 +163,25 @@ let get_http01_challenge authorization =
         | _, _ -> malformed_json authorization
 
 
-let do_http01_challenge cli challenge writef =
+let do_challenge cli challenge writef =
   let token = challenge.token in
   let pk = Primitives.pub_of_priv cli.account_key in
   let thumbprint = Jwk.thumbprint (`Rsa pk) in
   let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
   writef token key_authorization;
   return_ok ()
+
+
+let get_http01_challenge =
+  let is_http01 c = Json.string_member "type" c = Some "http-01" in
+  get_challenge is_http01
+
+let get_dns01_challenge =
+  let is_dns01 c = Json.string_member "type" c = Some "dns-01" in
+  get_challenge is_dns01
+
+let do_dns01_challenge = do_challenge
+let do_http01_challenge = do_challenge
 
 let new_authz cli domain =
   let url = cli.d.new_authz in
@@ -176,7 +193,7 @@ let new_authz cli domain =
   | 201 ->
      begin
        match Json.of_string body with
-       | Some authorization -> return (get_http01_challenge authorization)
+       | Some authorization -> return (get_dns01_challenge authorization)
        | None -> error_in "new-auth" code body
      end
   (* XXX. any other codes to handle? *)
@@ -264,7 +281,7 @@ let get_crt directory_url rsa_pem csr_pem writef domain =
         new_authz cli domain >>= function
         | Error e -> return_error e
         | Ok challenge ->
-          do_http01_challenge cli challenge writef >>= function
+          do_dns01_challenge cli challenge writef >>= function
           | Error e -> return_error e
           | Ok () ->
             challenge_met cli challenge >>= function
