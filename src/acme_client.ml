@@ -247,7 +247,6 @@ let new_cert cli =
 
 let get_crt directory_url rsa_pem csr_pem writef =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
-  (* XXX. this could be made prettier by using Lwt_result *)
   let open Lwt_result.Infix in
   new_cli directory_url rsa_pem csr_pem >>= fun cli ->
   new_reg cli >>= (function
