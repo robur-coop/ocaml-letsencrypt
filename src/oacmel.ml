@@ -13,16 +13,24 @@ let read_file filename =
   input ic ret 0 bufsize |> ignore;
   ret
 
-(** I guess for now we can leave a function here of type
- * bytes -> bytes -> unit
- * to handle the writing of the challenge into a file. *)
-let write_string filename data =
-  let oc = open_out filename in
-  Printf.fprintf oc "%s" data;
-  close_out oc
+let prettify_dns_solver printf token key =
+  let dns_string data =
+    Printf.sprintf "_acme-challenge.DOMAIN. 300 IN TXT \"%s\"\n" data
+  in
+  let ka_hash = Primitives.sha256 key in
+  let b64_ka_hash = B64u.urlencode ka_hash in
+  dns_string b64_ka_hash |> printf
 
-let print_dns_string domain data =
-  Printf.fprintf stdout "_acme-challenge.%s. 300 IN TXT \"%s\"\n" domain data
+let default_dns_solver = prettify_dns_solver print_endline
+
+let default_http_solver token key =
+  let write_string filename data =
+    let oc = open_out filename in
+    Printf.fprintf oc "%s" data;
+    close_out oc
+  in
+  let path = (*acme_dir ^ *) token in
+  write_string path key
 
 let rsa_pem_arg =
   let doc = "File containing the PEM-encoded RSA private key." in
@@ -46,15 +54,10 @@ let debug_arg =
 
 let main rsa_pem csr_pem acme_dir debug =
   let log_level = if debug then Logs.Debug else Logs.Info in
-  let writef token key_authorization =
-    let ka_hash = Primitives.sha256 key_authorization in
-    let b64_ka_hash = B64u.urlencode ka_hash in
-    print_dns_string domain b64_ka_hash
-  in
   let rsa_pem = read_file rsa_pem in
   let csr_pem = read_file csr_pem in
   let f =
-    Acme.Client.get_crt default_directory_url rsa_pem csr_pem writef
+    Acme.Client.get_crt default_directory_url rsa_pem csr_pem default_dns_solver
   in
   Logs.set_level (Some log_level);
   Logs.set_reporter (Logs_fmt.reporter ());
