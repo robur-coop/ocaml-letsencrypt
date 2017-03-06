@@ -166,7 +166,8 @@ let get_challenge challenge_filter authorization =
 
 type solver_t = {
     get_challenge : Json.t -> (challenge_t, string) Result.result;
-    solve_challenge : t -> challenge_t -> (unit, string) Result.result Lwt.t ;
+    solve_challenge : t -> challenge_t -> string ->
+                      (unit, string) Result.result Lwt.t ;
 }
 
 let http_solver writef =
@@ -174,19 +175,19 @@ let http_solver writef =
     let is_http01 c = Json.string_member "type" c = Some "http-01" in
     get_challenge is_http01
   in
-  let solve_http01_challenge cli challenge =
+  let solve_http01_challenge cli challenge domain =
     let token = challenge.token in
     let pk = Primitives.pub_of_priv cli.account_key in
     let thumbprint = Jwk.thumbprint (`Rsa pk) in
     let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
-    writef token key_authorization;
+    writef domain token key_authorization;
     return_ok ()
   in
   { get_challenge = get_http01_challenge;
     solve_challenge = solve_http01_challenge }
 
 let default_http_solver =
-  let default_writef = Printf.printf "Now write %s in %s\n" in
+  let default_writef = Printf.printf "Domain %s wants file %s content %s\n" in
   http_solver default_writef
 
 let dns_solver writef =
@@ -194,13 +195,13 @@ let dns_solver writef =
     let is_dns01 c = Json.string_member "type" c = Some "dns-01" in
     get_challenge is_dns01
   in
-  let solve_dns01_challenge cli challenge =
+  let solve_dns01_challenge cli challenge domain =
     let token = challenge.token in
     let pk = Primitives.pub_of_priv cli.account_key in
     let thumbprint = Jwk.thumbprint (`Rsa pk) in
     let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
     let solution = Primitives.sha256 key_authorization |> B64u.urlencode in
-    writef solution;
+    writef domain solution;
     return_ok ()
   in
   { get_challenge = get_dns01_challenge ;
@@ -208,7 +209,7 @@ let dns_solver writef =
 
 let default_dns_solver =
   let default_writef =
-    Printf.printf "_acme-challenge.DOMAIN. 300 IN TXT \"%s\"\n"
+    Printf.printf "_acme-challenge.%s. 300 IN TXT \"%s\"\n"
   in
   dns_solver default_writef
 
@@ -312,7 +313,7 @@ let get_crt directory_url rsa_pem csr_pem ?(solver=default_dns_solver) =
      match r with
      | Ok () ->
         new_authz cli domain solver.get_challenge >>= fun challenge ->
-        solver.solve_challenge cli challenge >>= fun () ->
+        solver.solve_challenge cli challenge domain >>= fun () ->
         challenge_met cli challenge >>= fun () ->
         poll_until cli challenge
      | Error r ->
