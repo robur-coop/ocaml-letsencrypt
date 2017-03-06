@@ -276,7 +276,7 @@ let get_crt directory_url rsa_pem csr_pem writef =
   |> List.map (fun domain ->
       fun () ->
         new_authz cli domain >>= fun challenge ->
-        do_dns01_challenge cli challenge writef >>= fun () ->
+        do_dns01_challenge cli challenge (writef domain) >>= fun () ->
         challenge_met cli challenge >>= fun () ->
         poll_until cli challenge)
   |> List.fold_left
