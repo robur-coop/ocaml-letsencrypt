@@ -254,7 +254,7 @@ let poll_challenge_status cli challenge =
        let status =  Json.string_member "status" challenge_status in
        match status with
        | Some "valid" -> return_ok false
-       | Some "pending"
+       | Some "pending" | Some "invalid"
        (* «If this field is missing, then the default value is "pending".» *)
        | None -> return_ok true
        | Some status -> error_in "polling" code body
