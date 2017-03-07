@@ -2,8 +2,6 @@ open Cmdliner
 open Lwt
 
 
-let default_directory_url = Acme_common.letsencrypt_staging_url
-
 (* XXX. Perhaps there's a more decent way in OCaml for reading a file? *)
 (* XXX. we are not dealing with exceptions here. *)
 let read_file filename =
@@ -13,14 +11,8 @@ let read_file filename =
   input ic ret 0 bufsize |> ignore;
   ret
 
-let default_http_solver token key =
-  let write_string filename data =
-    let oc = open_out filename in
-    Printf.fprintf oc "%s" data;
-    close_out oc
-  in
-  let path = (*acme_dir ^ *) token in
-  write_string path key
+
+let default_directory_url = Acme_common.letsencrypt_staging_url
 
 let rsa_pem_arg =
   let doc = "File containing the PEM-encoded RSA private key." in

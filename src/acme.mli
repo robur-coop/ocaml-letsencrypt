@@ -30,7 +30,14 @@ module Client: sig
     (** [get_crt directory_url rsa_pem csr_pem] asks the CA identified
         by [directory_url] for signing [csr_pem] with account key [account_pem]
         for all domains in [csr_pem].
+        This functions accepts an optionl argument [solver] specifying how to
+        solve the challenge provided by the [CA].
         The result is either a string result cotaining the pem-encoded signed
         certificate, or an error with a string describing what went wrong. *)
+
+
+    type solver_t
+    val default_http_solver : solver_t
+    val default_dns_solver : solver_t
 
   end
