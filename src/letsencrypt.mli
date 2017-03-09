@@ -1,6 +1,6 @@
-(** [Acme]: for when you love authorities.
+(** [Letsencrypt]: for when you love authorities.
 
-    Acme is an implementation of the ACME protocol, for automatizing the
+    Letsencrypt is an implementation of the ACME protocol, for automatizing the
     generation of HTTPS certificates.
 
     Currently, this library has been tested (and is working) only with
