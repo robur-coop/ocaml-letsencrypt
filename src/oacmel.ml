@@ -39,8 +39,9 @@ let main rsa_pem csr_pem acme_dir debug =
   let rsa_pem = read_file rsa_pem in
   let csr_pem = read_file csr_pem in
   let solver = Acme_client.default_dns_solver in
+  let directory = Acme_common.letsencrypt_staging_url in
   let f =
-    Acme_client.get_crt default_directory_url rsa_pem csr_pem ~solver
+    Acme_client.get_crt rsa_pem csr_pem ~directory ~solver
   in
   Logs.set_level (Some log_level);
   Logs.set_reporter (Logs_fmt.reporter ());

@@ -45,8 +45,7 @@ let get_header_or_fail name headers =
 let extract_nonce =
   get_header_or_fail "Replay-Nonce"
 
-let discover directory_url =
-  let directory = Uri.of_string directory_url in
+let discover directory =
   http_get directory >>= fun (code, headers, body) ->
   extract_nonce headers  >>= fun nonce ->
   match Json.of_string body with
@@ -66,7 +65,7 @@ let discover directory_url =
      | _, _, _, _ ->
         return (malformed_json edir)
 
-let new_cli directory_url rsa_pem csr_pem =
+let new_cli directory rsa_pem csr_pem =
   let maybe_rsa = Primitives.priv_of_pem rsa_pem in
   let maybe_csr = Pem.Certificate_signing_request.of_pem_cstruct (Cstruct.of_string csr_pem) in
   match maybe_rsa, maybe_csr with
@@ -74,7 +73,7 @@ let new_cli directory_url rsa_pem csr_pem =
   | Some x, [] -> return_error "Error parsing signing request."
   | Some x, y0 :: y1 :: ys -> return_error "Error: too many signing requests."
   | Some account_key, [csr] ->
-       discover directory_url >>= function
+       discover directory >>= function
        | Error e -> return_error e
        | Ok (next_nonce, d)  ->
           return_ok {account_key; csr; next_nonce; d}
@@ -292,11 +291,13 @@ let new_cert cli =
   | _ -> error_in "new-cert" code body
 
 
-let get_crt directory_url rsa_pem csr_pem ?(solver=default_dns_solver) =
+let get_crt rsa_pem csr_pem
+            ?(directory=letsencrypt_url)
+            ?(solver=default_dns_solver) =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
   let open Lwt_result.Infix in
   (* create a new client *)
-  new_cli directory_url rsa_pem csr_pem >>= fun cli ->
+  new_cli directory rsa_pem csr_pem >>= fun cli ->
 
   (* if the client didn't register, then register. Otherwise proceed *)
   new_reg cli >>= (function

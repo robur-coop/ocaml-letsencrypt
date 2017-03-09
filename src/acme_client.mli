@@ -9,7 +9,7 @@ type challenge_t = private {
 
 val get_crt : string ->
               string ->
-              string ->
+              ?directory:Uri.t ->
               ?solver:solver_t ->
               (string, string) Result.result Lwt.t
 

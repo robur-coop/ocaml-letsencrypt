@@ -37,8 +37,8 @@ let domains_of_csr csr =
 
 
 
-let letsencrypt_url =
+let letsencrypt_url = Uri.of_string
   "https://acme-v01.api.letsencrypt.org/directory"
 
-let letsencrypt_staging_url =
+let letsencrypt_staging_url = Uri.of_string
   "https://acme-staging.api.letsencrypt.org/directory"

@@ -6,8 +6,8 @@
     Currently, this library has been tested (and is working) only with
     Letsencrypt servers.
  *)
-val letsencrypt_url : string
-val letsencrypt_staging_url : string
+val letsencrypt_url : Uri.t
+val letsencrypt_staging_url : Uri.t
 
 
 
@@ -25,13 +25,15 @@ module Client: sig
 
     type t
 
-    val get_crt : string -> string -> string -> ?solver:Acme_client.solver_t ->
+    val get_crt : string -> string ->
+                  ?directory:Uri.t ->
+                  ?solver:Acme_client.solver_t ->
                   (string, string) result Lwt.t
     (** [get_crt directory_url rsa_pem csr_pem] asks the CA identified
-        by [directory_url] for signing [csr_pem] with account key [account_pem]
+        at url [directory] for signing [csr_pem] with account key [account_pem]
         for all domains in [csr_pem].
         This functions accepts an optionl argument [solver] specifying how to
-        solve the challenge provided by the [CA].
+        solve the challenge provided by the CA.
         The result is either a string result cotaining the pem-encoded signed
         certificate, or an error with a string describing what went wrong. *)
 
