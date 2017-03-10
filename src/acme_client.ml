@@ -14,10 +14,18 @@ type t = {
   }
 
 type challenge_t = {
-    url: Uri.t;
-    token: string;
+     url: Uri.t;
+     token: string;
   }
 
+type solver_t = {
+    name : string;
+    get_challenge : Json.t -> (challenge_t, string) Result.result;
+    solve_challenge : t ->
+                      challenge_t ->
+                      string ->
+                      (unit, string) Result.result Lwt.t;
+  }
 
 
 let malformed_json j =
@@ -163,13 +171,8 @@ let get_challenge challenge_filter authorization =
         | _, _ -> malformed_json authorization
 
 
-type solver_t = {
-    get_challenge : Json.t -> (challenge_t, string) Result.result;
-    solve_challenge : t -> challenge_t -> string ->
-                      (unit, string) Result.result Lwt.t ;
-}
-
 let http_solver writef =
+  let name = "http-01" in
   let get_http01_challenge =
     let is_http01 c = Json.string_member "type" c = Some "http-01" in
     get_challenge is_http01
@@ -182,16 +185,21 @@ let http_solver writef =
     writef domain token key_authorization;
     return_ok ()
   in
-  { get_challenge = get_http01_challenge;
-    solve_challenge = solve_http01_challenge }
+  {
+    name = name ;
+    get_challenge = get_http01_challenge;
+    solve_challenge = solve_http01_challenge
+  }
 
 let default_http_solver =
   let default_writef domain file content =
-    Logs.info (fun f -> f "Domain %s wants file %s content %s\n" domain file content)
+    Logs.info (fun f -> f "Domain %s wants file %s content %s\n" domain file content);
+    read_line ()
   in
   http_solver default_writef
 
 let dns_solver writef =
+  let name = "dns-01" in
   let get_dns01_challenge =
     let is_dns01 c = Json.string_member "type" c = Some "dns-01" in
     get_challenge is_dns01
@@ -205,12 +213,16 @@ let dns_solver writef =
     writef domain solution;
     return_ok ()
   in
-  { get_challenge = get_dns01_challenge ;
-    solve_challenge = solve_dns01_challenge }
+  {
+    name = name;
+    get_challenge = get_dns01_challenge;
+    solve_challenge = solve_dns01_challenge
+  }
 
 let default_dns_solver =
   let default_writef domain record =
-    Logs.info (fun f -> f "_acme-challenge.%s. 300 IN TXT \"%s\"\n" domain record)
+    Logs.info (fun f -> f "_acme-challenge.%s. 300 IN TXT \"%s\"\n" domain record);
+    read_line ()
   in
   dns_solver default_writef
 
@@ -231,15 +243,15 @@ let new_authz cli domain get_challenge =
   | _ -> error_in "new-authz" code body
 
 
-let challenge_met cli challenge =
+let challenge_met cli ct challenge =
   let token = challenge.token in
   let pub = Primitives.pub_of_priv cli.account_key in
   let thumbprint = Jwk.thumbprint (`Rsa pub) in
   let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
   (* write key_authorization *)
   let data =
-    Printf.sprintf {|{"resource": "challenge", "keyAuthorization": "%s"}|}
-                   key_authorization in
+    Printf.sprintf {|{"type": "%s", "keyAuthorization": "%s"}|}
+                   ct key_authorization in
   http_post_jws cli data challenge.url >>= fun _ ->
   (* XXX. here we should deal with the resulting codes, at least. *)
   return_ok ()
@@ -253,21 +265,23 @@ let poll_challenge_status cli challenge =
        let status =  Json.string_member "status" challenge_status in
        match status with
        | Some "valid" -> return_ok false
-       | Some "pending" | Some "invalid"
        (* «If this field is missing, then the default value is "pending".» *)
-       | None -> return_ok true
+       | Some "pending" | None -> return_ok true
        | Some status -> error_in "polling" code body
      end
   | _ -> error_in "polling" code body
 
 
-let rec poll_until ?(sec=10) cli challenge =
+(* XXX. is there a more clever way for making this lazy ?*)
+let default_sleep () = Unix.sleep 60
+
+let rec poll_until ?(sleep=default_sleep) cli challenge =
   poll_challenge_status cli challenge >>= function
   | Error e  -> return_error e
   | Ok false -> return_ok ()
   | Ok true  ->
      Logs.info (fun m -> m "Polling...");
-     Unix.sleep sec;
+     sleep ();
      poll_until cli challenge
 
 
@@ -317,7 +331,7 @@ let get_crt rsa_pem csr_pem
      | Ok () ->
         new_authz cli domain solver.get_challenge >>= fun challenge ->
         solver.solve_challenge cli challenge domain >>= fun () ->
-        challenge_met cli challenge >>= fun () ->
+        challenge_met cli solver.name challenge >>= fun () ->
         poll_until cli challenge
      | Error r ->
         Lwt.return_error "oh fuck"
