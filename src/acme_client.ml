@@ -249,9 +249,21 @@ let challenge_met cli ct challenge =
   let thumbprint = Jwk.thumbprint (`Rsa pub) in
   let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
   (* write key_authorization *)
-  let data =
-    Printf.sprintf {|{"type": "%s", "keyAuthorization": "%s"}|}
-                   ct key_authorization in
+  (**
+   XXX. that's weird: the standard (page 40, rev. 5) specifies only a "type" and
+   a "keyAuthorization" key in order to inform the CA of the accomplished
+   challenge.
+   However, following that I got
+
+   "urn:acme:error:malformed",
+   "detail": "Request payload does not specify a resource",
+   "status": 400
+
+   while specifying "challenge": type I am able to proceed.
+   **)
+  let data = Printf.sprintf
+               {|{"resource": "challenge", "type": "%s", "keyAuthorization": "%s"}|}
+               ct key_authorization in
   http_post_jws cli data challenge.url >>= fun _ ->
   (* XXX. here we should deal with the resulting codes, at least. *)
   return_ok ()
@@ -317,10 +329,10 @@ let get_crt rsa_pem csr_pem
   new_reg cli >>= (function
       | Some (terms_link, accept_url) ->
         let terms = terms_link.Cohttp.Link.target in
-         Printf.printf "Accepting terms at %s\n" (Uri.to_string terms);
+        Logs.info (fun f -> f "Accepting terms at %s\n" (Uri.to_string terms));
         accept_terms cli ~url:accept_url ~terms
       | None ->
-         Logs.info (fun m ->  m "No ToS."); return_ok ())
+         Logs.info (fun f -> f "No ToS."); return_ok ())
   >>= fun () ->
   (* for all domains, ask the ACME server for a certificate *)
   let csr = Pem.Certificate_signing_request.of_pem_cstruct1 (Cstruct.of_string csr_pem) in
