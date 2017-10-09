@@ -8,5 +8,6 @@ let () =
   Ok [
     Pkg.mllib ~api:["Letsencrypt"] "src/letsencrypt.mllib";
     Pkg.bin "bin/oacmel";
+    (* Pkg.bin "bin/acme_server"; *)
     Pkg.test "test/tests";
   ]

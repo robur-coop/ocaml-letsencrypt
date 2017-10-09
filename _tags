@@ -3,7 +3,8 @@ true: package(cohttp yojson lwt cohttp.lwt base64 nocrypto nocrypto.lwt zarith c
 
 <src/primitives.{ml,mli}>: package(x509)
 <src/acme_common.{ml,mli}>: package(x509)
-<src/acme_server.*>: package(dispatch)
 "src": include
+
+<bin/acme_server.{ml,native,byte}>: package(dispatch)
 
 <test/*>: package(oUnit)
