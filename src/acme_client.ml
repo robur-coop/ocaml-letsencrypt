@@ -7,26 +7,22 @@ open Acme_common
 module Pem = X509.Encoding.Pem
 
 type t = {
-    account_key: Primitives.priv;
-    csr:  X509.CA.signing_request;
-    mutable next_nonce: string;
-    d: directory_t;
-  }
+  account_key : Nocrypto.Rsa.priv ;
+  csr :  X509.CA.signing_request ;
+  mutable next_nonce : string ;
+  d : directory_t ;
+}
 
 type challenge_t = {
-     url: Uri.t;
-     token: string;
-  }
+  url : Uri.t ;
+  token : string ;
+}
 
 type solver_t = {
-    name : string;
-    get_challenge : Json.t -> (challenge_t, string) Result.result;
-    solve_challenge : t ->
-                      challenge_t ->
-                      string ->
-                      (unit, string) Result.result Lwt.t;
-  }
-
+  name : string ;
+  get_challenge : Json.t -> (challenge_t, string) Result.result ;
+  solve_challenge : t -> challenge_t -> string -> (unit, string) Result.result Lwt.t ;
+}
 
 let malformed_json j =
   let msg = Printf.sprintf "malformed json: %s" (Json.to_string j) in
@@ -55,23 +51,24 @@ let extract_nonce =
 
 let discover directory =
   http_get directory >>= fun (code, headers, body) ->
-  extract_nonce headers  >>= fun nonce ->
+  extract_nonce headers >>= fun nonce ->
   match Json.of_string body with
   | None -> error_in "discovery" code body
   | Some edir ->
-     let p m = Json.string_member m edir in
-     match p "new-authz", p "new-reg", p "new-cert", p "revoke-cert" with
-     | Some new_authz, Some new_reg, Some new_cert, Some revoke_cert ->
-        let u = Uri.of_string in
-        let directory_t = {
-            directory = directory;
-            new_authz = u new_authz;
-            new_reg = u new_reg;
-            new_cert = u new_cert;
-            revoke_cert = u revoke_cert} in
-        return_ok (nonce, directory_t)
-     | _, _, _, _ ->
-        return (malformed_json edir)
+    let p m = Json.string_member m edir in
+    match p "new-authz", p "new-reg", p "new-cert", p "revoke-cert" with
+    | Some new_authz, Some new_reg, Some new_cert, Some revoke_cert ->
+      let u = Uri.of_string in
+      let directory_t = {
+        directory = directory;
+        new_authz = u new_authz;
+        new_reg = u new_reg;
+        new_cert = u new_cert;
+        revoke_cert = u revoke_cert }
+      in
+      return_ok (nonce, directory_t)
+    | _, _, _, _ ->
+      return (malformed_json edir)
 
 let new_cli directory rsa_pem csr_pem =
   let maybe_rsa = Primitives.priv_of_pem rsa_pem in
@@ -81,14 +78,13 @@ let new_cli directory rsa_pem csr_pem =
   | Some x, [] -> return_error "Error parsing signing request."
   | Some x, y0 :: y1 :: ys -> return_error "Error: too many signing requests."
   | Some account_key, [csr] ->
-       discover directory >>= function
-       | Error e -> return_error e
-       | Ok (next_nonce, d)  ->
-          return_ok {account_key; csr; next_nonce; d}
+    discover directory >>= function
+    | Error e -> return_error e
+    | Ok (next_nonce, d)  ->
+      return_ok { account_key ; csr ; next_nonce ; d }
 
 
 let http_post_jws cli data url =
-
   let http_post key nonce data url =
     let body = Jws.encode key data nonce  in
     let body_len = string_of_int (String.length body) in
@@ -109,7 +105,6 @@ let http_post_jws cli data url =
   cli.next_nonce <- next_nonce;
   return (code, headers, body)
 
-
 let get_terms_of_service links =
   try Some (List.find
               (fun (link : Cohttp.Link.t) ->
@@ -124,19 +119,21 @@ let new_reg cli =
   http_post_jws cli body url >>= fun (code, headers, body) ->
   match code with
   | 201 ->
-    (match  Cohttp.Header.get_location headers with
+    (match Cohttp.Header.get_location headers with
      | Some accept_url ->
        let terms = match Cohttp.Header.get_links headers |> get_terms_of_service with
          | Some terms -> terms
          | None -> failwith "Accept url without terms-of-service"
        in
-       Logs.info (fun m -> m "Must accept terms."); return_ok (Some (terms, accept_url))
+       Logs.info (fun m -> m "Must accept terms.");
+       return_ok (Some (terms, accept_url))
      | None ->
-       Logs.info (fun m -> m "Account created.");  return_ok None)
+       Logs.info (fun m -> m "Account created.");
+       return_ok None)
   | 409 ->
-    Logs.info (fun m -> m "Already registered."); return_ok None
+    Logs.info (fun m -> m "Already registered.");
+    return_ok None
   | _   -> error_in "new-reg" code body
-
 
 let accept_terms cli ~url ~terms =
   let body =
@@ -161,15 +158,14 @@ let get_challenge challenge_filter authorization =
   match Json.list_member "challenges" authorization with
   | None -> malformed_json authorization
   | Some challenges ->
-     match List.filter challenge_filter challenges with
-     | []  -> Error "No supported challenges found."
-     | challenge :: _ ->
-        let token = Json.string_member "token" challenge in
-        let url = Json.string_member "uri" challenge in
-        match token, url with
-        | Some t, Some u -> Ok {token=t; url=Uri.of_string u}
-        | _, _ -> malformed_json authorization
-
+    match List.filter challenge_filter challenges with
+    | [] -> Error "No supported challenges found."
+    | challenge :: _ ->
+      let token = Json.string_member "token" challenge in
+      let url = Json.string_member "uri" challenge in
+      match token, url with
+      | Some t, Some u -> Ok {token=t; url=Uri.of_string u}
+      | _, _ -> malformed_json authorization
 
 let http_solver writef =
   let name = "http-01" in
@@ -187,7 +183,7 @@ let http_solver writef =
   in
   {
     name = name ;
-    get_challenge = get_http01_challenge;
+    get_challenge = get_http01_challenge ;
     solve_challenge = solve_http01_challenge
   }
 
@@ -214,8 +210,8 @@ let dns_solver writef =
     return_ok ()
   in
   {
-    name = name;
-    get_challenge = get_dns01_challenge;
+    name = name ;
+    get_challenge = get_dns01_challenge ;
     solve_challenge = solve_dns01_challenge
   }
 
@@ -229,16 +225,17 @@ let default_dns_solver =
 let new_authz cli domain get_challenge =
   let url = cli.d.new_authz in
   let body = Printf.sprintf
-    {|{"resource": "new-authz", "identifier": {"type": "dns", "value": "%s"}}|}
-    domain in
+      {|{"resource": "new-authz", "identifier": {"type": "dns", "value": "%s"}}|}
+      domain
+  in
   http_post_jws cli body url >>= fun (code, headers, body) ->
   match code with
   | 201 ->
-     begin
-       match Json.of_string body with
-       | Some authorization -> return (get_challenge authorization)
-       | None -> error_in "new-auth" code body
-     end
+    begin
+      match Json.of_string body with
+      | Some authorization -> return (get_challenge authorization)
+      | None -> error_in "new-auth" code body
+    end
   (* XXX. any other codes to handle? *)
   | _ -> error_in "new-authz" code body
 
@@ -262,8 +259,9 @@ let challenge_met cli ct challenge =
    while specifying "challenge": type I am able to proceed.
    **)
   let data = Printf.sprintf
-               {|{"resource": "challenge", "type": "%s", "keyAuthorization": "%s"}|}
-               ct key_authorization in
+      {|{"resource": "challenge", "type": "%s", "keyAuthorization": "%s"}|}
+      ct key_authorization
+  in
   http_post_jws cli data challenge.url >>= fun _ ->
   (* XXX. here we should deal with the resulting codes, at least. *)
   return_ok ()
@@ -273,14 +271,14 @@ let poll_challenge_status cli challenge =
   http_get challenge.url >>= fun (code, headers, body) ->
   match Json.of_string body with
   | Some challenge_status ->
-     begin
-       let status =  Json.string_member "status" challenge_status in
-       match status with
-       | Some "valid" -> return_ok false
-       (* «If this field is missing, then the default value is "pending".» *)
-       | Some "pending" | None -> return_ok true
-       | Some status -> error_in "polling" code body
-     end
+    begin
+      let status =  Json.string_member "status" challenge_status in
+      match status with
+      | Some "valid" -> return_ok false
+      (* «If this field is missing, then the default value is "pending".» *)
+      | Some "pending" | None -> return_ok true
+      | Some status -> error_in "polling" code body
+    end
   | _ -> error_in "polling" code body
 
 
@@ -292,20 +290,16 @@ let rec poll_until ?(sleep=default_sleep) cli challenge =
   | Error e  -> return_error e
   | Ok false -> return_ok ()
   | Ok true  ->
-     Logs.info (fun m -> m "Polling...");
-     sleep ();
-     poll_until cli challenge
+    Logs.info (fun m -> m "Polling...");
+    sleep ();
+    poll_until cli challenge
 
 
 let der_to_pem der =
   let der = Cstruct.of_string der in
   match X509.Encoding.parse der with
-  | Some crt ->
-     let pem = Pem.Certificate.to_pem_cstruct [crt] |> Cstruct.to_string in
-     Ok pem
-  | None ->
-     Error "I got gibberish while trying to decode the new certificate."
-
+  | Some crt -> Ok (Pem.Certificate.to_pem_cstruct [crt] |> Cstruct.to_string)
+  | None -> Error "I got gibberish while trying to decode the new certificate."
 
 let new_cert cli =
   let url = cli.d.new_cert in
@@ -316,10 +310,7 @@ let new_cert cli =
   | 201 -> return (der_to_pem body)
   | _ -> error_in "new-cert" code body
 
-
-let get_crt rsa_pem csr_pem
-            ?(directory=letsencrypt_url)
-            ?(solver=default_dns_solver) =
+let get_crt rsa_pem csr_pem ?(directory = letsencrypt_url) ?(solver = default_dns_solver) =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
   let open Lwt_result.Infix in
   (* create a new client *)
@@ -332,24 +323,22 @@ let get_crt rsa_pem csr_pem
         Logs.info (fun f -> f "Accepting terms at %s\n" (Uri.to_string terms));
         accept_terms cli ~url:accept_url ~terms
       | None ->
-         Logs.info (fun f -> f "No ToS."); return_ok ())
+        Logs.info (fun f -> f "No ToS.");
+        return_ok ())
   >>= fun () ->
   (* for all domains, ask the ACME server for a certificate *)
   let csr = Pem.Certificate_signing_request.of_pem_cstruct1 (Cstruct.of_string csr_pem) in
   let domains = domains_of_csr csr in
   Lwt_list.fold_left_s
     (fun r domain ->
-     match r with
-     | Ok () ->
-        new_authz cli domain solver.get_challenge >>= fun challenge ->
-        solver.solve_challenge cli challenge domain >>= fun () ->
-        challenge_met cli solver.name challenge >>= fun () ->
-        poll_until cli challenge
-     | Error r ->
-        Lwt.return_error "oh fuck"
-    )
-    (Ok ())
-    domains
-  >>= fun () ->
+       match r with
+       | Ok () ->
+         new_authz cli domain solver.get_challenge >>= fun challenge ->
+         solver.solve_challenge cli challenge domain >>= fun () ->
+         challenge_met cli solver.name challenge >>= fun () ->
+         poll_until cli challenge
+       | Error r ->
+         Lwt.return_error "oh fuck")
+    (Ok ()) domains >>= fun () ->
   new_cert cli >>= fun pem ->
   return_ok pem
