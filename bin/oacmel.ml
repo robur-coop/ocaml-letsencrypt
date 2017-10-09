@@ -58,7 +58,7 @@ let info =
       `S "DESCRIPTION"; `P "This is software is experimental. Don't use it.";
       `S "BUGS"; `P "Email bug reports to <maker@tumbolandia.net>";
     ] in
-  Term.info "oacmel" ~version:"0.1" ~doc ~man
+  Term.info "oacmel" ~version:"%%VERSION%%" ~doc ~man
 
 let () =
   let cli = Term.(const main
