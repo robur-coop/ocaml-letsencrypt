@@ -9,5 +9,5 @@ let () =
     Pkg.mllib ~api:["Letsencrypt"] "src/letsencrypt.mllib";
     Pkg.mllib ~api:["Acme_client"] "src/acme_client.mllib";
     Pkg.bin ~dst:"oacmel" "src/oacmel";
-    Pkg.test "src/tests";
+    Pkg.test "test/tests";
   ]
