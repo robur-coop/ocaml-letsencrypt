@@ -1,4 +1,3 @@
-name="letsencrypt"
 description="Implementation of the ACME protocol"
 version="%%VERSION_NUM%%"
 requires="x509 cohttp yojson lwt cohttp lwt base64 nocrypto nocrypto lwt zarith cmdliner logs logs.fmt"
@@ -6,14 +5,3 @@ archive(byte)="letsencrypt.cma"
 archive(native)="letsencrypt.cmxa"
 plugin(byte)="letsencrypt.cma"
 plugin(native)="letsencrypt.cmxs"
-
-package "client" (
-    name="letsencrypt"
-    description="An ACME client"
-    version="%%VERSION_NUM%%"
-    requires="x509 cohttp yojson lwt cohttp lwt base64 nocrypto nocrypto.lwt zarith cmdliner logs logs.fmt"
-    archive(byte)="acme_client.cma"
-    archive(native)="acme_client.cmxa"
-    plugin(byte)="acme_client.cma"
-    plugin(native)="acme_client.cmxs"
-)

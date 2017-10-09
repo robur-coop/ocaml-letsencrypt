@@ -7,7 +7,6 @@ let () =
   Pkg.describe "letsencrypt" @@ fun c ->
   Ok [
     Pkg.mllib ~api:["Letsencrypt"] "src/letsencrypt.mllib";
-    Pkg.mllib ~api:["Acme_client"] "src/acme_client.mllib";
     Pkg.bin "bin/oacmel";
     Pkg.test "test/tests";
   ]
