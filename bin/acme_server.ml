@@ -12,28 +12,27 @@ let ca = "http://localhost:8080/"
 let path_directory = "directory"
 
 type t = {
-    port : int;
-    dir  : directory_t;
-  }
+  port : int;
+  dir  : directory_t;
+}
 
 let new_directory root =
-    let u path = root ^ path |> Uri.of_string in
-    {
-      directory   = u "/directory";
-      new_authz   = u "/acme/new-authz";
-      new_reg     = u "/acme/new-reg";
-      new_cert    = u "/acme/new-cert";
-      revoke_cert = u "/acme/revoke-cert";
-    }
+  let u path = root ^ path |> Uri.of_string in
+  {
+    directory   = u "/directory";
+    new_authz   = u "/acme/new-authz";
+    new_reg     = u "/acme/new-reg";
+    new_cert    = u "/acme/new-cert";
+    revoke_cert = u "/acme/revoke-cert";
+  }
 
 
 let new_server root port =
   let dir = new_directory root in
-  let s = {
-      dir     = dir;
-      port    = port;
-    } in
-  s
+  {
+    dir     = dir;
+    port    = port;
+  }
 
 let index_handler keys rest s request =
   let body = "Hello!\n" in
@@ -42,11 +41,11 @@ let index_handler keys rest s request =
 let directory_handler keys rest s request =
   let p = Uri.to_string in
   let body = Printf.sprintf
-               {|{"new-authz": "%s", "new-cert": "%s", "new-reg": "%s", "revoke-cert": "%s"}|}
-               (p s.dir.new_authz)
-               (p s.dir.new_cert)
-               (p s.dir.new_reg)
-               (p s.dir.revoke_cert)
+      {|{"new-authz": "%s", "new-cert": "%s", "new-reg": "%s", "revoke-cert": "%s"}|}
+      (p s.dir.new_authz)
+      (p s.dir.new_cert)
+      (p s.dir.new_reg)
+      (p s.dir.revoke_cert)
   in
   Server.respond_string ~status:`OK ~body ()
 

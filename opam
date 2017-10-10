@@ -16,6 +16,7 @@ depends: [
     "base64"
     "cmdliner"
     "cohttp"
+    "cohttp-lwt-unix"
     "logs"
     "fmt"
     "lwt" {>= "2.6.0"}

@@ -1,8 +1,5 @@
 open Nocrypto
 
-type pub = Rsa.pub
-type priv = Rsa.priv
-
 module Pem = X509.Encoding.Pem
 
 let priv_of_pem rsa_pem =
@@ -12,10 +9,9 @@ let priv_of_pem rsa_pem =
   | [`RSA key] -> Some key
   | _ -> None
 
-
 let pub_of_priv = Rsa.pub_of_priv
 let pub_of_z ~e ~n = Rsa.{e; n}
-let pub_to_z (key: pub) = Rsa.(key.e, key.n)
+let pub_to_z (key : Rsa.pub) = Rsa.(key.e, key.n)
 
 let rs256_sign priv data =
   let data = Cstruct.of_string data in
@@ -25,9 +21,7 @@ let rs256_sign priv data =
 
 let rs256_verify pub data signature =
   let data = Cstruct.of_string data in
-  let signature = Cstruct.of_string signature in
-  let maybe_pkcs1_digest = Rsa.PKCS1.sig_decode pub signature in
-  match maybe_pkcs1_digest with
+  match Rsa.PKCS1.sig_decode pub (Cstruct.of_string signature) with
   | Some pkcs1_digest ->
      begin
        match X509.Encoding.pkcs1_digest_info_of_cstruct pkcs1_digest with

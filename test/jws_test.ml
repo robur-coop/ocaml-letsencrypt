@@ -56,8 +56,8 @@ let expected_signature =
 
 let rsa_key () =
   match Primitives.priv_of_pem testkey_pem with
-    | Some skey -> skey
-    | _ -> raise (Failure "Unable to parse test RSA key.")
+  | Some skey -> skey
+  | _ -> raise (Failure "Unable to parse test RSA key.")
 
 let jws_encode_somedata () =
   let priv_key = rsa_key () in
@@ -72,10 +72,10 @@ let jws_encode_somedata () =
 let test_member member expected test_ctx =
   let jws = jws_encode_somedata () in
   match Json.string_member member jws with
-    | Some protected -> assert_equal protected expected
-    | None ->
-       let errmsg = Printf.sprintf "Cannot get field \"%s\"." member in
-       assert_failure errmsg
+  | Some protected -> assert_equal protected expected
+  | None ->
+    let errmsg = Printf.sprintf "Cannot get field \"%s\"." member in
+    assert_failure errmsg
 
 let test_encode_protected = test_member "protected" expected_protected
 let test_encode_payload = test_member "payload" expected_payload
@@ -86,8 +86,8 @@ let test_decode_null test_ctx =
 
 let jws_decode_somedata () =
   let data = Printf.sprintf
-              {|{"protected": "%s", "payload": "%s", "signature": "%s"}|}
-              expected_protected expected_payload expected_signature in
+      {|{"protected": "%s", "payload": "%s", "signature": "%s"}|}
+      expected_protected expected_payload expected_signature in
   Jws.decode data
 
 let test_decode_rsakey text_ctx =
@@ -96,8 +96,8 @@ let test_decode_rsakey text_ctx =
   match jws with
   | None -> assert_failure "Failed to parse decoding string."
   | Some (protected, payload) ->
-     let pub = Primitives.pub_of_priv key in
-     assert_equal protected.Jws.jwk (`Rsa pub)
+    let pub = Primitives.pub_of_priv key in
+    assert_equal protected.Jws.jwk (`Rsa pub)
 
 (* XXX. at this stage we probably wont the expected payload to be on some
  * global variable. *)
@@ -106,15 +106,15 @@ let test_decode_payload text_ctx =
   match jws with
   | None -> assert_failure "Failed to parse decoding string."
   | Some (_, payload) ->
-     assert_equal payload {|{"Msg":"Hello JWS"}|}
+    assert_equal payload {|{"Msg":"Hello JWS"}|}
 
 
 let all_tests = [
-    "test_encode_protected" >:: test_encode_protected;
-    "test_encode_payload" >:: test_encode_payload;
-    "test_edincode_signature" >:: test_encode_signature;
+  "test_encode_protected" >:: test_encode_protected;
+  "test_encode_payload" >:: test_encode_payload;
+  "test_edincode_signature" >:: test_encode_signature;
 
-    "test_decode_null" >:: test_decode_null;
-    "test_decode_rsakey" >:: test_decode_rsakey;
-    "test_decode_payload" >:: test_decode_payload;
-  ]
+  "test_decode_null" >:: test_decode_null;
+  "test_decode_rsakey" >:: test_decode_rsakey;
+  "test_decode_payload" >:: test_decode_payload;
+]
