@@ -1,5 +1,4 @@
-type pub
-type priv
+open Nocrypto.Rsa
 
 val priv_of_pem : string -> priv option
 

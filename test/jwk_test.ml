@@ -30,7 +30,7 @@ let decode_example =
                   |> Jwk.decode in
   match maybe_pub with
   | `Rsa pub -> pub
-  | `Null    -> assert_failure "Error decoding."
+  | `Null -> assert_failure "Error decoding."
 
 let test_decode text_ctx =
   let pub = decode_example in
@@ -53,10 +53,10 @@ let test_decode_invalid_kty test_ctx =
   assert_equal (Jwk.decode s) `Null
 
 let all_tests = [
-      "test_encode" >:: test_encode;
-      "test_thumbprint" >:: test_thumbprint;
-      "test_decode" >:: test_decode;
-      "test_decode_invalid_kty" >:: test_decode_invalid_kty;
-      "test_decode_invalid_e" >:: test_decode_invalid_e;
-      "test_decode_invalid_n" >:: test_decode_invalid_n;
-  ]
+  "test_encode" >:: test_encode;
+  "test_thumbprint" >:: test_thumbprint;
+  "test_decode" >:: test_decode;
+  "test_decode_invalid_kty" >:: test_decode_invalid_kty;
+  "test_decode_invalid_e" >:: test_decode_invalid_e;
+  "test_decode_invalid_n" >:: test_decode_invalid_n;
+]

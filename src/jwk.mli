@@ -6,12 +6,11 @@
 
 (** [key_t] identifies a key.
     At present, this implementation only manages RSA keys. *)
-type key_t = [`Null | `Rsa of Primitives.pub]
+type key_t = [ `Null | `Rsa of Nocrypto.Rsa.pub ]
 
 
 val encode : key_t -> string
 (** [encode key] produces the JWK-encoding of [key]. *)
-
 
 val decode : string -> key_t
 (** [decode jwk_string] reads [jwk_string] as a json and extracts the public
