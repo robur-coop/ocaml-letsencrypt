@@ -30,27 +30,31 @@ let acme_dir_arg =
     "http://example.com/.well-known/acme-challenge/" in
   Arg.(value & opt string default_path & info ["acme_dir"] ~docv:"DIR" ~doc)
 
-let debug_arg =
-  let doc = "Turn on debug logging." in
-  Arg.(value & flag & info ["v"] ~doc)
+let setup_log style_renderer level =
+  Fmt_tty.setup_std_outputs ?style_renderer ();
+  Logs.set_level level;
+  Logs.set_reporter (Logs_fmt.reporter ())
 
-let main rsa_pem csr_pem acme_dir debug =
-  let log_level = if debug then Logs.Debug else Logs.Info in
+let setup_log =
+  Term.(const setup_log
+        $ Fmt_cli.style_renderer ()
+        $ Logs_cli.level ())
+
+let run rsa_pem csr_pem directory solver =
+  Nocrypto_entropy_lwt.initialize () >>= fun () ->
+  Acme_client.get_crt rsa_pem csr_pem ~directory ~solver
+
+let main _ rsa_pem csr_pem acme_dir =
   let rsa_pem = read_file rsa_pem in
   let csr_pem = read_file csr_pem in
   let solver = Acme_client.default_dns_solver in
   let directory = Acme_common.letsencrypt_staging_url in
-  let f =
-    Acme_client.get_crt rsa_pem csr_pem ~directory ~solver
-  in
-  Logs.set_level (Some log_level);
-  Logs.set_reporter (Logs_fmt.reporter ());
-  match Lwt_main.run f with
+  match Lwt_main.run (run rsa_pem csr_pem directory solver) with
   | Error e ->
-     Logs.err (fun m -> m "Error: %s" e)
+    Logs.err (fun m -> m "Error: %s" e)
   | Ok pem ->
-     Logs.info (fun m -> m "Certificate downloaded");
-     print_endline pem
+    Logs.info (fun m -> m "Certificate downloaded");
+    print_endline pem
 
 let info =
   let doc = "just another ACME client" in
@@ -62,10 +66,10 @@ let info =
 
 let () =
   let cli = Term.(const main
+                  $ setup_log
                   $ rsa_pem_arg
                   $ csr_pem_arg
-                  $ acme_dir_arg
-                  $ debug_arg) in
+                  $ acme_dir_arg) in
   match Term.eval (cli, info) with
   | `Error _ -> exit 1
   | _        -> exit 0
