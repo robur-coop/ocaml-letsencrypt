@@ -5,6 +5,7 @@ true: package(cohttp yojson lwt cohttp.lwt base64 nocrypto nocrypto.lwt zarith c
 <src/acme_common.{ml,mli}>: package(x509)
 "src": include
 
+<bin/oacmel.{ml,native,byte}>: package(fmt.cli logs.cli fmt.tty)
 <bin/acme_server.{ml,native,byte}>: package(dispatch)
 
 <test/*>: package(oUnit)
