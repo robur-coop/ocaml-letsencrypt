@@ -40,20 +40,21 @@ let setup_log =
         $ Fmt_cli.style_renderer ()
         $ Logs_cli.level ())
 
+let run rsa_pem csr_pem directory solver =
+  Nocrypto_entropy_lwt.initialize () >>= fun () ->
+  Acme_client.get_crt rsa_pem csr_pem ~directory ~solver
+
 let main _ rsa_pem csr_pem acme_dir =
   let rsa_pem = read_file rsa_pem in
   let csr_pem = read_file csr_pem in
   let solver = Acme_client.default_dns_solver in
   let directory = Acme_common.letsencrypt_staging_url in
-  let f =
-    Acme_client.get_crt rsa_pem csr_pem ~directory ~solver
-  in
-  match Lwt_main.run f with
+  match Lwt_main.run (run rsa_pem csr_pem directory solver) with
   | Error e ->
-     Logs.err (fun m -> m "Error: %s" e)
+    Logs.err (fun m -> m "Error: %s" e)
   | Ok pem ->
-     Logs.info (fun m -> m "Certificate downloaded");
-     print_endline pem
+    Logs.info (fun m -> m "Certificate downloaded");
+    print_endline pem
 
 let info =
   let doc = "just another ACME client" in

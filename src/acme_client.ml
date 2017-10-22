@@ -311,7 +311,6 @@ let new_cert cli =
   | _ -> error_in "new-cert" code body
 
 let get_crt rsa_pem csr_pem ?(directory = letsencrypt_url) ?(solver = default_dns_solver) =
-  Nocrypto_entropy_lwt.initialize () >>= fun () ->
   let open Lwt_result.Infix in
   (* create a new client *)
   new_cli directory rsa_pem csr_pem >>= fun cli ->
