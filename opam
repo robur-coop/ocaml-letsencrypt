@@ -5,6 +5,7 @@ maintainer: "Michele Mu <maker@tumbolandia.net>"
 author: "Michele Mu <maker@tumbolandia.net>"
 license: "BSD-2-clause"
 dev-repo: "https://github.com/mmaker/ocaml-letsencrypt.git"
+bug-reports:  "https://github.com/mmaker/ocaml-letsencrypt/issues"
 homepage: "https://github.com/mmaker/ocaml-letsencrypt"
 build: [
   "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%"
@@ -16,13 +17,14 @@ depends: [
     "base64"
     "cmdliner"
     "cohttp"
+    "cohttp-lwt"
     "cohttp-lwt-unix"
+    "zarith"
     "logs"
     "fmt"
     "lwt" {>= "2.6.0"}
     "nocrypto"
     "x509"
-    "tls"
     "yojson"
     "ounit" {test}
 ]

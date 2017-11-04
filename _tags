@@ -1,10 +1,11 @@
 true: bin_annot
-true: package(cohttp yojson lwt cohttp.lwt base64 nocrypto nocrypto.lwt zarith cmdliner logs logs.fmt)
+true: package(cohttp yojson lwt cohttp-lwt cohttp-lwt-unix base64 nocrypto zarith logs logs.fmt)
 
 <src/primitives.{ml,mli}>: package(x509)
 <src/acme_common.{ml,mli}>: package(x509)
 "src": include
 
+<bin/oacmel.{ml,native,byte}>: package(cmdliner fmt.cli logs.cli fmt.tty nocrypto.lwt)
 <bin/acme_server.{ml,native,byte}>: package(dispatch)
 
 <test/*>: package(oUnit)
