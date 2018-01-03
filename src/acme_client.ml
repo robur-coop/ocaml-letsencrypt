@@ -38,7 +38,7 @@ let http_get url =
   Client.get url >>= fun (resp, body) ->
   let code = resp |> Response.status |> Code.code_of_status in
   let headers = resp |> Response.headers in
-  body |> Cohttp_lwt_body.to_string >>= fun body ->
+  body |> Cohttp_lwt.Body.to_string >>= fun body ->
   return (code, headers, body)
 
 let get_header_or_fail name headers =
@@ -90,13 +90,13 @@ let http_post_jws cli data url =
     let body_len = string_of_int (String.length body) in
     let header = Header.init () in
     let header = Header.add header "Content-Length" body_len in
-    let body = Cohttp_lwt_body.of_string body in
+    let body = Cohttp_lwt.Body.of_string body in
     Client.post ~body:body ~headers:header url
   in
   http_post cli.account_key cli.next_nonce data url >>= fun (resp, body) ->
   let code = resp |> Response.status |> Code.code_of_status in
   let headers = resp |> Response.headers in
-  body |> Cohttp_lwt_body.to_string >>= fun body ->
+  body |> Cohttp_lwt.Body.to_string >>= fun body ->
   Logs.debug (fun m -> m "Got code: %d" code);
   Logs.debug (fun m -> m "headers \"%s\"" (String.escaped @@ Cohttp.Header.to_string headers));
   Logs.debug (fun m -> m "body \"%s\"" (String.escaped body));

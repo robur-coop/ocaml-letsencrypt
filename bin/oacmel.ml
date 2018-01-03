@@ -9,7 +9,7 @@ let read_file filename =
   let ic = open_in filename in
   let ret = Bytes.make bufsize '\000' in
   input ic ret 0 bufsize |> ignore;
-  ret
+  Bytes.to_string ret
 
 
 let default_directory_url = Acme_common.letsencrypt_staging_url
