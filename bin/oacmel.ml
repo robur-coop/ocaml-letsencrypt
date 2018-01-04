@@ -1,4 +1,3 @@
-open Cmdliner
 open Lwt
 
 
@@ -10,35 +9,6 @@ let read_file filename =
   let ret = Bytes.make bufsize '\000' in
   input ic ret 0 bufsize |> ignore;
   Bytes.to_string ret
-
-
-let default_directory_url = Acme_common.letsencrypt_staging_url
-
-let rsa_pem_arg =
-  let doc = "File containing the PEM-encoded RSA private key." in
-  Arg.(value & opt string "priv.key" & info ["account-key"] ~docv:"FILE" ~doc)
-
-let csr_pem_arg =
-  let doc = "File containing the PEM-encoded CSR." in
-  Arg.(value & opt string "certificate.csr" & info ["csr"] ~docv:"FILE" ~doc)
-
-let acme_dir_arg =
-  let default_path = "/var/www/html/.well-known/acme-challenge/" in
-  let doc =
-    "Base path for where to write challenges. " ^
-    "For letsencrypt, it must be the one serving " ^
-    "http://example.com/.well-known/acme-challenge/" in
-  Arg.(value & opt string default_path & info ["acme_dir"] ~docv:"DIR" ~doc)
-
-let setup_log style_renderer level =
-  Fmt_tty.setup_std_outputs ?style_renderer ();
-  Logs.set_level level;
-  Logs.set_reporter (Logs_fmt.reporter ())
-
-let setup_log =
-  Term.(const setup_log
-        $ Fmt_cli.style_renderer ()
-        $ Logs_cli.level ())
 
 let run rsa_pem csr_pem directory solver =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
@@ -56,6 +26,34 @@ let main _ rsa_pem csr_pem acme_dir =
     Logs.info (fun m -> m "Certificate downloaded");
     print_endline pem
 
+let setup_log style_renderer level =
+  Fmt_tty.setup_std_outputs ?style_renderer ();
+  Logs.set_level level;
+  Logs.set_reporter (Logs_fmt.reporter ())
+
+open Cmdliner
+
+let rsa_pem =
+  let doc = "File containing the PEM-encoded RSA private key." in
+  Arg.(value & opt string "priv.key" & info ["account-key"] ~docv:"FILE" ~doc)
+
+let csr_pem =
+  let doc = "File containing the PEM-encoded CSR." in
+  Arg.(value & opt string "certificate.csr" & info ["csr"] ~docv:"FILE" ~doc)
+
+let acme_dir =
+  let default_path = "/var/www/html/.well-known/acme-challenge/" in
+  let doc =
+    "Base path for where to write challenges. " ^
+    "For letsencrypt, it must be the one serving " ^
+    "http://example.com/.well-known/acme-challenge/" in
+  Arg.(value & opt string default_path & info ["acme_dir"] ~docv:"DIR" ~doc)
+
+let setup_log =
+  Term.(const setup_log
+        $ Fmt_cli.style_renderer ()
+        $ Logs_cli.level ())
+
 let info =
   let doc = "just another ACME client" in
   let man = [
@@ -65,11 +63,7 @@ let info =
   Term.info "oacmel" ~version:"%%VERSION%%" ~doc ~man
 
 let () =
-  let cli = Term.(const main
-                  $ setup_log
-                  $ rsa_pem_arg
-                  $ csr_pem_arg
-                  $ acme_dir_arg) in
+  let cli = Term.(const main $ setup_log $ rsa_pem $ csr_pem $ acme_dir) in
   match Term.eval (cli, info) with
   | `Error _ -> exit 1
   | _        -> exit 0
