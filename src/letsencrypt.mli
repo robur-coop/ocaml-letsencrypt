@@ -37,6 +37,6 @@ module Client: sig
 
   type solver_t
   val default_http_solver : solver_t
-  val default_dns_solver : solver_t
+  val default_dns_solver : Unix.inet_addr -> Dns_name.t -> Dns_packet.dnskey -> solver_t
 
 end

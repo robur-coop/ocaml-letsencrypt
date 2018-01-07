@@ -1,6 +1,6 @@
 description="Implementation of the ACME protocol"
 version="%%VERSION_NUM%%"
-requires="x509 cohttp yojson lwt cohttp-lwt-unix base64 nocrypto nocrypto.lwt zarith logs"
+requires="x509 cohttp yojson lwt cohttp-lwt-unix base64 nocrypto nocrypto.lwt zarith logs udns udns.crypto"
 archive(byte)="letsencrypt.cma"
 archive(native)="letsencrypt.cmxa"
 plugin(byte)="letsencrypt.cma"

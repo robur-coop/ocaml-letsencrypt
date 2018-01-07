@@ -3,9 +3,11 @@ true: package(cohttp yojson lwt cohttp-lwt cohttp-lwt-unix base64 nocrypto zarit
 
 <src/primitives.{ml,mli}>: package(x509)
 <src/acme_common.{ml,mli}>: package(x509)
+<src/letsencrypt.mli>: package(udns)
+<src/acme_client.{ml,mli}>: package(udns udns.crypto)
 "src": include
 
-<bin/oacmel.{ml,native,byte}>: package(cmdliner fmt.cli logs.cli fmt.tty nocrypto.lwt)
+<bin/oacmel.{ml,native,byte}>: package(cmdliner fmt.cli logs.cli fmt.tty nocrypto.lwt udns udns.crypto x509)
 <bin/acme_server.{ml,native,byte}>: package(dispatch)
 
 <test/*>: package(oUnit)

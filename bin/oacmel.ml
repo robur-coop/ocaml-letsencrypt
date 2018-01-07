@@ -14,17 +14,22 @@ let run rsa_pem csr_pem directory solver =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
   Acme_client.get_crt rsa_pem csr_pem ~directory ~solver
 
-let main _ rsa_pem csr_pem acme_dir =
+let main _ rsa_pem csr_pem acme_dir ip key =
   let rsa_pem = read_file rsa_pem in
   let csr_pem = read_file csr_pem in
-  let solver = Acme_client.default_dns_solver in
-  let directory = Acme_common.letsencrypt_staging_url in
-  match Lwt_main.run (run rsa_pem csr_pem directory solver) with
-  | Error e ->
-    Logs.err (fun m -> m "Error: %s" e)
-  | Ok pem ->
-    Logs.info (fun m -> m "Certificate downloaded");
-    print_endline pem
+  match Astring.String.cut ~sep:":" key with
+  | None -> Logs.err (fun m -> m "couldn't parse key")
+  | Some (name, key) -> match Dns_name.of_string ~hostname:false name, Dns_packet.dnskey_of_string key with
+    | _, None | Error _, _ -> Logs.err (fun m -> m "no key")
+    | Ok name, Some key ->
+      let solver = Acme_client.default_dns_solver (Unix.inet_addr_of_string ip) name key in
+      let directory = Acme_common.letsencrypt_url in
+      match Lwt_main.run (run rsa_pem csr_pem directory solver) with
+      | Error e ->
+        Logs.err (fun m -> m "Error: %s" e)
+      | Ok pem ->
+        Logs.info (fun m -> m "Certificate downloaded");
+        print_endline pem
 
 let setup_log style_renderer level =
   Fmt_tty.setup_std_outputs ?style_renderer ();
@@ -49,6 +54,14 @@ let acme_dir =
     "http://example.com/.well-known/acme-challenge/" in
   Arg.(value & opt string default_path & info ["acme_dir"] ~docv:"DIR" ~doc)
 
+let ip =
+  let doc = "ip address of DNS server" in
+  Arg.(value & opt string "" & info ["ip"] ~doc)
+
+let key =
+  let doc = "nsupdate key" in
+  Arg.(value & opt string "" & info ["key"] ~doc)
+
 let setup_log =
   Term.(const setup_log
         $ Fmt_cli.style_renderer ()
@@ -63,7 +76,7 @@ let info =
   Term.info "oacmel" ~version:"%%VERSION%%" ~doc ~man
 
 let () =
-  let cli = Term.(const main $ setup_log $ rsa_pem $ csr_pem $ acme_dir) in
+  let cli = Term.(const main $ setup_log $ rsa_pem $ csr_pem $ acme_dir $ ip $ key) in
   match Term.eval (cli, info) with
   | `Error _ -> exit 1
   | _        -> exit 0

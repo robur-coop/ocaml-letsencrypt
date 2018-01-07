@@ -14,3 +14,4 @@ PKG x509
 PKG yojson
 PKG zarith
 PKG cohttp-lwt-unix
+PKG udns

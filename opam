@@ -27,6 +27,7 @@ depends: [
     "x509"
     "yojson"
     "ounit" {test}
+    "udns"
 ]
 
 build-test: [

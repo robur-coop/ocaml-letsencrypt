@@ -206,8 +206,7 @@ let dns_solver writef =
     let thumbprint = Jwk.thumbprint (`Rsa pk) in
     let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
     let solution = Primitives.sha256 key_authorization |> B64u.urlencode in
-    writef domain solution;
-    return_ok ()
+    writef domain solution
   in
   {
     name = name ;
@@ -215,12 +214,55 @@ let dns_solver writef =
     solve_challenge = solve_dns01_challenge
   }
 
-let default_dns_solver =
-  let default_writef domain record =
-    Logs.info (fun f -> f "_acme-challenge.%s. 300 IN TXT \"%s\"\n" domain record);
-    read_line ()
+let default_dns_solver ip keyname key =
+  let nsupdate host record =
+    let name = Dns_name.prepend_exn ~hostname:false (Dns_name.of_string_exn host) "_acme-challenge" in
+    let nsupdate =
+      let q_name =
+        let a = Dns_name.to_array keyname in
+        Dns_name.of_array (Array.sub a 0 (Array.length a - 2))
+      in
+      let zone = { Dns_packet.q_name ; q_type = Dns_enum.SOA }
+      and update = [
+        Dns_packet.Remove (name, Dns_enum.TXT) ;
+        Dns_packet.Add ({ Dns_packet.name ; ttl = 3600l ; rdata = Dns_packet.TXT [ record ] })
+      ]
+      in
+      { Dns_packet.zone ; prereq = [] ; update ; addition = [] }
+    and header = { Dns_packet.id = 0xDEAD ; query = true ; operation = Dns_enum.Update ;
+                   authoritative = false ; truncation = false ; recursion_desired = false ;
+                   recursion_available = false ; authentic_data = false ; checking_disabled = false ;
+                   rcode = Dns_enum.NoError }
+    in
+    Logs.app (fun m -> m "sending DNS update frame: %a %a" Dns_packet.pp_header header Dns_packet.pp_update nsupdate) ;
+    let b = Cstruct.create 512 in
+    let l = Dns_packet.encode_update b header nsupdate in
+    let b = Cstruct.sub b 0 l in
+    match Dns_packet.dnskey_to_tsig_algo key with
+    | None -> fail_with "cannot discover tsig algorithm of key"
+    | Some algorithm ->
+      let signed = Ptime_clock.now () in
+      match Dns_packet.tsig ~algorithm ~signed () with
+      | None -> fail_with "couldn't create tsig"
+      | Some tsig ->
+        Logs.app (fun m -> m "tsig is %a" Dns_packet.pp_tsig tsig) ;
+        match Dns_tsig.sign keyname ~key tsig b with
+        | None -> fail_with "key is not good"
+        | Some (b, _) ->
+          let bl = Cstruct.len b in
+          Logs.app (fun m -> m "signed %a" Cstruct.hexdump_pp b) ;
+          let out = Lwt_unix.(socket PF_INET SOCK_DGRAM 0) in
+          let server = Lwt_unix.ADDR_INET (ip, 53) in
+          Lwt_unix.sendto out (Cstruct.to_bytes b) 0 bl [] server >>= fun n ->
+          Lwt_unix.sleep 2. >>= fun () ->
+          if n = bl then return_ok () else fail_with "couldn't send nsupdate"
   in
-  dns_solver default_writef
+(*  let default_writef domain record =
+    Logs.info (fun f -> f "_acme-challenge.%s. 300 IN TXT \"%s\"\n" domain record);
+    let _ = read_line () in
+    Lwt.return_ok ()
+    in *)
+  dns_solver (* default_writef *) nsupdate
 
 let new_authz cli domain get_challenge =
   let url = cli.d.new_authz in
@@ -283,7 +325,7 @@ let poll_challenge_status cli challenge =
 
 
 (* XXX. is there a more clever way for making this lazy ?*)
-let default_sleep () = Unix.sleep 60
+let default_sleep () = Unix.sleep 5
 
 let rec poll_until ?(sleep=default_sleep) cli challenge =
   poll_challenge_status cli challenge >>= function
@@ -310,7 +352,7 @@ let new_cert cli =
   | 201 -> return (der_to_pem body)
   | _ -> error_in "new-cert" code body
 
-let get_crt rsa_pem csr_pem ?(directory = letsencrypt_url) ?(solver = default_dns_solver) =
+let get_crt rsa_pem csr_pem ?(directory = letsencrypt_url) ?(solver = default_http_solver) =
   let open Lwt_result.Infix in
   (* create a new client *)
   new_cli directory rsa_pem csr_pem >>= fun cli ->
