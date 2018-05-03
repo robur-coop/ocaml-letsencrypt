@@ -10,9 +10,12 @@ let read_file filename =
   input ic ret 0 bufsize |> ignore;
   Bytes.to_string ret
 
+module Acme_cli = Acme_client.Make(Cohttp_lwt_unix.Client)
+
+
 let run rsa_pem csr_pem directory solver =
   Nocrypto_entropy_lwt.initialize () >>= fun () ->
-  Acme_client.get_crt rsa_pem csr_pem ~directory ~solver
+  Acme_cli.get_crt rsa_pem csr_pem ~directory ~solver
 
 let main _ rsa_pem csr_pem acme_dir ip key =
   let rsa_pem = read_file rsa_pem in

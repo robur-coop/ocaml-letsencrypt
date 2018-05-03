@@ -1,5 +1,4 @@
 open Cohttp
-open Cohttp_lwt_unix
 open Lwt
 
 open Acme_common
@@ -30,124 +29,13 @@ let malformed_json j =
 
 let error_in endpoint code body =
   let body = String.escaped body in
-  let errf = Printf.sprintf "Error at %s: code %d - body: %s" in
-  let msg = errf endpoint code body in
+  let msg = Printf.sprintf "Error at %s: code %d - body: %s" endpoint code body in
   return_error msg
 
-let http_get url =
-  Client.get url >>= fun (resp, body) ->
-  let code = resp |> Response.status |> Code.code_of_status in
-  let headers = resp |> Response.headers in
-  body |> Cohttp_lwt.Body.to_string >>= fun body ->
-  return (code, headers, body)
-
-let get_header_or_fail name headers =
-  match Header.get headers name with
-  | Some nonce -> return nonce
-  | None -> fail_with "Error: I could not fetch a new nonce."
-
-let extract_nonce =
-  get_header_or_fail "Replay-Nonce"
-
-let discover directory =
-  http_get directory >>= fun (code, headers, body) ->
-  extract_nonce headers >>= fun nonce ->
-  match Json.of_string body with
-  | None -> error_in "discovery" code body
-  | Some edir ->
-    let p m = Json.string_member m edir in
-    match p "new-authz", p "new-reg", p "new-cert", p "revoke-cert" with
-    | Some new_authz, Some new_reg, Some new_cert, Some revoke_cert ->
-      let u = Uri.of_string in
-      let directory_t = {
-        directory = directory;
-        new_authz = u new_authz;
-        new_reg = u new_reg;
-        new_cert = u new_cert;
-        revoke_cert = u revoke_cert }
-      in
-      return_ok (nonce, directory_t)
-    | _, _, _, _ ->
-      return (malformed_json edir)
-
-let new_cli directory rsa_pem csr_pem =
-  let maybe_rsa = Primitives.priv_of_pem rsa_pem in
-  let maybe_csr = Pem.Certificate_signing_request.of_pem_cstruct (Cstruct.of_string csr_pem) in
-  match maybe_rsa, maybe_csr with
-  | None, _ -> return_error "Error parsing account key."
-  | Some x, [] -> return_error "Error parsing signing request."
-  | Some x, y0 :: y1 :: ys -> return_error "Error: too many signing requests."
-  | Some account_key, [csr] ->
-    discover directory >>= function
-    | Error e -> return_error e
-    | Ok (next_nonce, d)  ->
-      return_ok { account_key ; csr ; next_nonce ; d }
-
-
-let http_post_jws cli data url =
-  let http_post key nonce data url =
-    let body = Jws.encode key data nonce  in
-    let body_len = string_of_int (String.length body) in
-    let header = Header.init () in
-    let header = Header.add header "Content-Length" body_len in
-    let body = Cohttp_lwt.Body.of_string body in
-    Client.post ~body:body ~headers:header url
-  in
-  http_post cli.account_key cli.next_nonce data url >>= fun (resp, body) ->
-  let code = resp |> Response.status |> Code.code_of_status in
-  let headers = resp |> Response.headers in
-  body |> Cohttp_lwt.Body.to_string >>= fun body ->
-  Logs.debug (fun m -> m "Got code: %d" code);
-  Logs.debug (fun m -> m "headers \"%s\"" (String.escaped @@ Cohttp.Header.to_string headers));
-  Logs.debug (fun m -> m "body \"%s\"" (String.escaped body));
-  extract_nonce headers >>= fun next_nonce ->
-  (* XXX: is this like cheating? *)
-  cli.next_nonce <- next_nonce;
-  return (code, headers, body)
-
-let get_terms_of_service links =
-  try Some (List.find
-              (fun (link : Cohttp.Link.t) ->
-                 link.Cohttp.Link.arc.Cohttp.Link.Arc.relation =
-                 [Cohttp.Link.Rel.extension (Uri.of_string "terms-of-service")])
-              links)
-  with Not_found -> None
-
-let new_reg cli =
-  let url = cli.d.new_reg in
-  let body = {|{"resource": "new-reg"}|} in
-  http_post_jws cli body url >>= fun (code, headers, body) ->
-  match code with
-  | 201 ->
-    (match Cohttp.Header.get_location headers with
-     | Some accept_url ->
-       let terms = match Cohttp.Header.get_links headers |> get_terms_of_service with
-         | Some terms -> terms
-         | None -> failwith "Accept url without terms-of-service"
-       in
-       Logs.info (fun m -> m "Must accept terms.");
-       return_ok (Some (terms, accept_url))
-     | None ->
-       Logs.info (fun m -> m "Account created.");
-       return_ok None)
-  | 409 ->
-    Logs.info (fun m -> m "Already registered.");
-    return_ok None
-  | _   -> error_in "new-reg" code body
-
-let accept_terms cli ~url ~terms =
-  let body =
-    Json.to_string (`Assoc [
-        ("resource", `String "reg");
-        ("agreement", `String (Uri.to_string terms));
-      ])
-  in
-  http_post_jws cli body url >>= fun (code, headers, body) ->
-  match code with
-  | 202 -> Logs.info (fun m -> m "Terms accepted."); return_ok ()
-  | 409 -> Logs.info (fun m -> m "Already registered."); return_ok ()
-  | _ -> error_in "accept_terms" code body
-
+let extract_nonce headers =
+  match Header.get headers "Replay-Nonce" with
+  | Some nonce -> Ok nonce
+  | None -> Error "Error: I could not fetch a new nonce."
 
 (*
    XXX. probably the structure of challenges different from http-01 and
@@ -235,9 +123,7 @@ let default_dns_solver ip keyname key =
                    rcode = Dns_enum.NoError }
     in
     Logs.app (fun m -> m "sending DNS update frame: %a %a" Dns_packet.pp_header header Dns_packet.pp_update nsupdate) ;
-    let b = Cstruct.create 512 in
-    let l = Dns_packet.encode_update b header nsupdate in
-    let b = Cstruct.sub b 0 l in
+    let b, _ = Dns_packet.encode `Udp (header, `Update nsupdate) in
     match Dns_packet.dnskey_to_tsig_algo key with
     | None -> fail_with "cannot discover tsig algorithm of key"
     | Some algorithm ->
@@ -264,7 +150,121 @@ let default_dns_solver ip keyname key =
     in *)
   dns_solver (* default_writef *) nsupdate
 
+module Make (Client : Cohttp_lwt.S.Client) = struct
+
+let http_get url =
+  Client.get url >>= fun (resp, body) ->
+  let code = resp |> Response.status |> Code.code_of_status in
+  let headers = resp |> Response.headers in
+  body |> Cohttp_lwt.Body.to_string >>= fun body ->
+  return (code, headers, body)
+
+let discover directory =
+  http_get directory >>= fun (code, headers, body) ->
+  match extract_nonce headers, Json.of_string body with
+  | Error e, _ -> return_error e
+  | _, None -> error_in "discovery" code body
+  | Ok nonce, Some edir ->
+    let p m = Json.string_member m edir in
+    match p "new-authz", p "new-reg", p "new-cert", p "revoke-cert" with
+    | Some new_authz, Some new_reg, Some new_cert, Some revoke_cert ->
+      let u = Uri.of_string in
+      let directory_t = {
+        directory = directory;
+        new_authz = u new_authz;
+        new_reg = u new_reg;
+        new_cert = u new_cert;
+        revoke_cert = u revoke_cert }
+      in
+      return_ok (nonce, directory_t)
+    | _, _, _, _ ->
+      return (malformed_json edir)
+
+let new_cli directory rsa_pem csr_pem =
+  let maybe_rsa = Primitives.priv_of_pem rsa_pem in
+  let maybe_csr = Pem.Certificate_signing_request.of_pem_cstruct (Cstruct.of_string csr_pem) in
+  match maybe_rsa, maybe_csr with
+  | None, _ -> return_error "Error parsing account key."
+  | Some x, [] -> return_error "Error parsing signing request."
+  | Some x, y0 :: y1 :: ys -> return_error "Error: too many signing requests."
+  | Some account_key, [csr] ->
+    discover directory >>= function
+    | Error e -> return_error e
+    | Ok (next_nonce, d)  ->
+      return_ok { account_key ; csr ; next_nonce ; d }
+
+
+let http_post_jws cli data url =
+  let http_post key nonce data url =
+    let body = Jws.encode key data nonce  in
+    let body_len = string_of_int (String.length body) in
+    let header = Header.init () in
+    let header = Header.add header "Content-Length" body_len in
+    let body = Cohttp_lwt.Body.of_string body in
+    Client.post ~body:body ~headers:header url
+  in
+  http_post cli.account_key cli.next_nonce data url >>= fun (resp, body) ->
+  let code = resp |> Response.status |> Code.code_of_status in
+  let headers = resp |> Response.headers in
+  body |> Cohttp_lwt.Body.to_string >>= fun body ->
+  Logs.debug (fun m -> m "Got code: %d" code);
+  Logs.debug (fun m -> m "headers \"%s\"" (String.escaped @@ Cohttp.Header.to_string headers));
+  Logs.debug (fun m -> m "body \"%s\"" (String.escaped body));
+  match extract_nonce headers with
+  | Error e -> return_error e
+  | Ok next_nonce ->
+    (* XXX: is this like cheating? *)
+    cli.next_nonce <- next_nonce;
+    return_ok (code, headers, body)
+
+let get_terms_of_service links =
+  try Some (List.find
+              (fun (link : Cohttp.Link.t) ->
+                 link.Cohttp.Link.arc.Cohttp.Link.Arc.relation =
+                 [Cohttp.Link.Rel.extension (Uri.of_string "terms-of-service")])
+              links)
+  with Not_found -> None
+
+let new_reg cli =
+  let open Lwt_result.Infix in
+  let url = cli.d.new_reg in
+  let body = {|{"resource": "new-reg"}|} in
+  http_post_jws cli body url >>= fun (code, headers, body) ->
+  match code with
+  | 201 ->
+    (match Cohttp.Header.get_location headers with
+     | Some accept_url ->
+       let terms = match Cohttp.Header.get_links headers |> get_terms_of_service with
+         | Some terms -> terms
+         | None -> failwith "Accept url without terms-of-service"
+       in
+       Logs.info (fun m -> m "Must accept terms.");
+       return_ok (Some (terms, accept_url))
+     | None ->
+       Logs.info (fun m -> m "Account created.");
+       return_ok None)
+  | 409 ->
+    Logs.info (fun m -> m "Already registered.");
+    return_ok None
+  | _   -> error_in "new-reg" code body
+
+let accept_terms cli ~url ~terms =
+  let open Lwt_result.Infix in
+  let body =
+    Json.to_string (`Assoc [
+        ("resource", `String "reg");
+        ("agreement", `String (Uri.to_string terms));
+      ])
+  in
+  http_post_jws cli body url >>= fun (code, headers, body) ->
+  match code with
+  | 202 -> Logs.info (fun m -> m "Terms accepted."); return_ok ()
+  | 409 -> Logs.info (fun m -> m "Already registered."); return_ok ()
+  | _ -> error_in "accept_terms" code body
+
+
 let new_authz cli domain get_challenge =
+  let open Lwt_result.Infix in
   let url = cli.d.new_authz in
   let body = Printf.sprintf
       {|{"resource": "new-authz", "identifier": {"type": "dns", "value": "%s"}}|}
@@ -324,16 +324,13 @@ let poll_challenge_status cli challenge =
   | _ -> error_in "polling" code body
 
 
-(* XXX. is there a more clever way for making this lazy ?*)
-let default_sleep () = Unix.sleep 5
-
-let rec poll_until ?(sleep=default_sleep) cli challenge =
+let rec poll_until cli challenge =
   poll_challenge_status cli challenge >>= function
   | Error e  -> return_error e
   | Ok false -> return_ok ()
   | Ok true  ->
     Logs.info (fun m -> m "Polling...");
-    sleep ();
+    Lwt_unix.sleep 5. >>= fun () ->
     poll_until cli challenge
 
 
@@ -344,6 +341,7 @@ let der_to_pem der =
   | None -> Error "I got gibberish while trying to decode the new certificate."
 
 let new_cert cli =
+  let open Lwt_result.Infix in
   let url = cli.d.new_cert in
   let der = X509.Encoding.cs_of_signing_request cli.csr |> Cstruct.to_string |> B64u.urlencode in
   let data = Printf.sprintf {|{"resource": "new-cert", "csr": "%s"}|} der in
@@ -383,3 +381,4 @@ let get_crt rsa_pem csr_pem ?(directory = letsencrypt_url) ?(solver = default_ht
     (Ok ()) domains >>= fun () ->
   new_cert cli >>= fun pem ->
   return_ok pem
+end
