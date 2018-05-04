@@ -15,3 +15,10 @@ PKG yojson
 PKG zarith
 PKG cohttp-lwt-unix
 PKG udns
+PKG cohttp
+PKG cohttp-lwt
+PKG astring
+PKG rresult
+PKG bos
+PKG fpath
+PKG ptime

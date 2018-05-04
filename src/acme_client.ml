@@ -46,7 +46,8 @@ let get_challenge challenge_filter authorization =
   match List.filter challenge_filter challenges with
   | [] -> Error "No supported challenges found."
   | challenge :: cs ->
-    Logs.debug (fun m -> m "got %d challenges, using the head" (List.length cs)) ;
+    Logs.debug (fun m -> m "got %d challenges, using the head"
+                   (succ (List.length cs))) ;
     Json.string_member "token" challenge >>= fun token ->
     Json.string_member "uri" challenge >>= fun url ->
     Ok { token ; url = Uri.of_string url }
@@ -204,15 +205,16 @@ let http_post_jws cli data url =
     let body_len = string_of_int (String.length body) in
     let header = Cohttp.Header.init () in
     let header = Cohttp.Header.add header "Content-Length" body_len in
-    let body = Cohttp_lwt.Body.of_string body in
     (header, body)
   in
   let headers, body = prepare_post cli.account_key cli.next_nonce data in
+  Logs.debug (fun m -> m "HTTP post %a (data %s body %s)"
+                 Uri.pp_hum url data (String.escaped body));
+  let body = Cohttp_lwt.Body.of_string body in
   Client.post ~body ~headers url >>= fun (resp, body) ->
   let code = resp |> Cohttp.Response.status |> Cohttp.Code.code_of_status in
   let headers = resp |> Cohttp.Response.headers in
   body |> Cohttp_lwt.Body.to_string >>= fun body ->
-  Logs.debug (fun m -> m "HTTP post %a (body %s)" Uri.pp_hum url body);
   Logs.debug (fun m -> m "Got code: %d" code);
   Logs.debug (fun m -> m "headers \"%s\"" (Cohttp.Header.to_string headers));
   Logs.debug (fun m -> m "body \"%s\"" (String.escaped body));
