@@ -1,4 +1,6 @@
-type key_t = [ `Null | `Rsa of Nocrypto.Rsa.pub]
+open Rresult.R.Infix
+
+type key_t = [ `Rsa of Nocrypto.Rsa.pub]
 
 (** RSA operations *)
 let encode_rsa key =
@@ -8,16 +10,12 @@ let encode_rsa key =
     (B64u.urlencodez n)
 
 let decode_rsa j =
-  let maybe_e = Json.b64_z_member "e" j in
-  let maybe_n = Json.b64_z_member "n" j in
-  match maybe_e, maybe_n with
-  | Some e, Some n -> `Rsa (Primitives.pub_of_z e n)
-  | _, _ -> `Null
+  Json.b64_z_member "e" j >>= fun e ->
+  Json.b64_z_member "n" j >>= fun n ->
+  Ok (`Rsa (Primitives.pub_of_z ~e ~n))
 
-let encode key =
-  match key with
+let encode = function
   | `Rsa key -> encode_rsa key
-  | `Null -> raise (Failure "I cannot encode `Null keys.")
 
 let thumbprint pub_key =
   let jwk = encode pub_key in
@@ -25,11 +23,10 @@ let thumbprint pub_key =
   B64u.urlencode h
 
 let decode_json json =
-  match Json.string_member "kty" json with
-  | Some "RSA" -> decode_rsa json
-  | _ -> `Null
+  Json.string_member "kty" json >>= function
+  | "RSA" -> decode_rsa json
+  | x -> Error ("unknown key type " ^ x)
 
 let decode data =
-  match Json.of_string data with
-  | Some json -> decode_json json
-  | None -> `Null
+  Json.of_string data >>= fun json ->
+  decode_json json

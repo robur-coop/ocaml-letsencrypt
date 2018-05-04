@@ -65,24 +65,22 @@ let jws_encode_somedata () =
   let nonce = "nonce" in
   let jws = Jws.encode priv_key data nonce in
   match Json.of_string jws with
-  | Some json -> json
-  | None -> raise (Failure "cannot understand json testcase!")
+  | Ok json -> json
+  | Error e -> assert_failure e
 
 
 let test_member member expected test_ctx =
   let jws = jws_encode_somedata () in
   match Json.string_member member jws with
-  | Some protected -> assert_equal protected expected
-  | None ->
-    let errmsg = Printf.sprintf "Cannot get field \"%s\"." member in
-    assert_failure errmsg
+  | Ok protected -> assert_equal protected expected
+  | Error e -> assert_failure e
 
 let test_encode_protected = test_member "protected" expected_protected
 let test_encode_payload = test_member "payload" expected_payload
 let test_encode_signature = test_member "signature" expected_signature
 
 let test_decode_null test_ctx =
-  assert_equal (Jws.decode "{}") None
+  assert_equal (Jws.decode "{}") (Error "couldn't find string protected in {}")
 
 let jws_decode_somedata () =
   let data = Printf.sprintf
@@ -94,18 +92,17 @@ let test_decode_rsakey text_ctx =
   let jws = jws_decode_somedata () in
   let key = rsa_key () in
   match jws with
-  | None -> assert_failure "Failed to parse decoding string."
-  | Some (protected, payload) ->
+  | Error e -> assert_failure e
+  | Ok (protected, payload) ->
     let pub = Primitives.pub_of_priv key in
-    assert_equal protected.Jws.jwk (`Rsa pub)
+    assert_equal protected.Jws.jwk (Some (`Rsa pub))
 
 (* XXX. at this stage we probably wont the expected payload to be on some
  * global variable. *)
 let test_decode_payload text_ctx =
-  let jws = jws_decode_somedata () in
-  match jws with
-  | None -> assert_failure "Failed to parse decoding string."
-  | Some (_, payload) ->
+  match jws_decode_somedata () with
+  | Error e -> assert_failure e
+  | Ok (_, payload) ->
     assert_equal payload {|{"Msg":"Hello JWS"}|}
 
 

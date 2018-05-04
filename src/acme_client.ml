@@ -39,23 +39,25 @@ let extract_nonce headers =
    dns-01 is different, but for the two and only supported ones it's
    probably fine.
  *)
+(* TODO what about the tail of the challenge list? *)
 let get_challenge challenge_filter authorization =
-  match Json.list_member "challenges" authorization with
-  | None -> malformed_json authorization
-  | Some challenges ->
-    match List.filter challenge_filter challenges with
-    | [] -> Error "No supported challenges found."
-    | challenge :: _ ->
-      let token = Json.string_member "token" challenge in
-      let url = Json.string_member "uri" challenge in
-      match token, url with
-      | Some t, Some u -> Ok {token=t; url=Uri.of_string u}
-      | _, _ -> malformed_json authorization
+  let open Rresult.R.Infix in
+  Json.list_member "challenges" authorization >>= fun challenges ->
+  match List.filter challenge_filter challenges with
+  | [] -> Error "No supported challenges found."
+  | challenge :: cs ->
+    Logs.debug (fun m -> m "got %d challenges, using the head" (List.length cs)) ;
+    Json.string_member "token" challenge >>= fun token ->
+    Json.string_member "uri" challenge >>= fun url ->
+    Ok { token ; url = Uri.of_string url }
 
 let http_solver writef =
   let name = "http-01" in
   let get_http01_challenge =
-    let is_http01 c = Json.string_member "type" c = Some "http-01" in
+    let is_http01 c = match Json.string_member "type" c with
+      | Ok x when x = "http-01" -> true
+      | _ -> false
+    in
     get_challenge is_http01
   in
   let solve_http01_challenge cli challenge domain =
@@ -82,7 +84,10 @@ let default_http_solver =
 let dns_solver writef =
   let name = "dns-01" in
   let get_dns01_challenge =
-    let is_dns01 c = Json.string_member "type" c = Some "dns-01" in
+    let is_dns01 c = match Json.string_member "type" c with
+      | Ok x when x = "dns-01" -> true
+      | _ -> false
+    in
     get_challenge is_dns01
   in
   let solve_dns01_challenge cli challenge domain =
@@ -154,28 +159,31 @@ let http_get url =
   let code = resp |> Cohttp.Response.status |> Cohttp.Code.code_of_status in
   let headers = resp |> Cohttp.Response.headers in
   body |> Cohttp_lwt.Body.to_string >>= fun body ->
+  Logs.debug (fun m -> m "HTTP get: %a" Uri.pp_hum url);
+  Logs.debug (fun m -> m "Got code: %d" code);
+  Logs.debug (fun m -> m "headers \"%s\"" (Cohttp.Header.to_string headers));
+  Logs.debug (fun m -> m "body \"%s\"" (String.escaped body));
   Lwt.return (code, headers, body)
 
 let discover directory =
   http_get directory >|= fun (code, headers, body) ->
-  match extract_nonce headers, Json.of_string body with
-  | Error e, _ -> Error e
-  | _, None -> error_in "discovery" code body
-  | Ok nonce, Some edir ->
-    let p m = Json.string_member m edir in
-    match p "new-authz", p "new-reg", p "new-cert", p "revoke-cert" with
-    | Some new_authz, Some new_reg, Some new_cert, Some revoke_cert ->
-      let u = Uri.of_string in
-      let directory_t = {
-        directory = directory;
-        new_authz = u new_authz;
-        new_reg = u new_reg;
-        new_cert = u new_cert;
-        revoke_cert = u revoke_cert }
-      in
-      Ok (nonce, directory_t)
-    | _, _, _, _ ->
-      malformed_json edir
+  let open Rresult.R.Infix in
+  extract_nonce headers >>= fun nonce ->
+  Json.of_string body >>= fun edir ->
+  let p m = Json.string_member m edir in
+  p "new-authz" >>= fun new_authz ->
+  p "new-reg" >>= fun new_reg ->
+  p "new-cert" >>= fun new_cert ->
+  p "revoke-cert" >>= fun revoke_cert ->
+  let u = Uri.of_string in
+  let directory_t = {
+    directory = directory;
+    new_authz = u new_authz;
+    new_reg = u new_reg;
+    new_cert = u new_cert;
+    revoke_cert = u revoke_cert }
+  in
+  Ok (nonce, directory_t)
 
 let new_cli directory rsa_pem csr_pem =
   let maybe_rsa = Primitives.priv_of_pem rsa_pem in
@@ -190,22 +198,23 @@ let new_cli directory rsa_pem csr_pem =
     | Ok (next_nonce, d)  ->
       Lwt.return_ok { account_key ; csr ; next_nonce ; d }
 
-
 let http_post_jws cli data url =
-  let http_post key nonce data url =
-    let body = Jws.encode key data nonce  in
+  let prepare_post key nonce data =
+    let body = Jws.encode key data nonce in
     let body_len = string_of_int (String.length body) in
     let header = Cohttp.Header.init () in
     let header = Cohttp.Header.add header "Content-Length" body_len in
     let body = Cohttp_lwt.Body.of_string body in
-    Client.post ~body:body ~headers:header url
+    (header, body)
   in
-  http_post cli.account_key cli.next_nonce data url >>= fun (resp, body) ->
+  let headers, body = prepare_post cli.account_key cli.next_nonce data in
+  Client.post ~body ~headers url >>= fun (resp, body) ->
   let code = resp |> Cohttp.Response.status |> Cohttp.Code.code_of_status in
   let headers = resp |> Cohttp.Response.headers in
   body |> Cohttp_lwt.Body.to_string >>= fun body ->
+  Logs.debug (fun m -> m "HTTP post %a (body %s)" Uri.pp_hum url body);
   Logs.debug (fun m -> m "Got code: %d" code);
-  Logs.debug (fun m -> m "headers \"%s\"" (String.escaped @@ Cohttp.Header.to_string headers));
+  Logs.debug (fun m -> m "headers \"%s\"" (Cohttp.Header.to_string headers));
   Logs.debug (fun m -> m "body \"%s\"" (String.escaped body));
   match extract_nonce headers with
   | Error e -> Lwt.return_error e
@@ -271,13 +280,11 @@ let new_authz cli domain get_challenge =
   http_post_jws cli body url >|= function
   | Error e -> Error e
   | Ok (code, headers, body) ->
+    let open Rresult.R.Infix in
     match code with
     | 201 ->
-      begin
-        match Json.of_string body with
-        | Some authorization -> get_challenge authorization
-        | None -> error_in "new-authz (json.of_string)" code body
-      end
+      Json.of_string body >>= fun authorization ->
+      get_challenge authorization
     (* XXX. any other codes to handle? *)
     | _ -> error_in "new-authz" code body
 
@@ -310,18 +317,13 @@ let challenge_met cli ct challenge =
 
 let poll_challenge_status cli challenge =
   http_get challenge.url >|= fun (code, headers, body) ->
-  match Json.of_string body with
-  | Some challenge_status ->
-    begin
-      let status = Json.string_member "status" challenge_status in
-      match status with
-      | Some "valid" -> Ok false
-      (* «If this field is missing, then the default value is "pending".» *)
-      | Some "pending" | None -> Ok true
-      | Some status -> error_in "polling" code body
-    end
-  | _ -> error_in "polling" code body
-
+  let open Rresult.R.Infix in
+  Json.of_string body >>= fun challenge_status ->
+  match Json.string_member "status" challenge_status with
+  | Ok "valid" -> Ok false
+  (* «If this field is missing, then the default value is "pending".» *)
+  | Ok "pending" | Error _ -> Ok true
+  | Ok status -> error_in ("polling " ^ status) code body
 
 let rec poll_until cli challenge =
   poll_challenge_status cli challenge >>= function
@@ -331,7 +333,6 @@ let rec poll_until cli challenge =
     Logs.info (fun m -> m "Polling...");
     Lwt_unix.sleep 5. >>= fun () ->
     poll_until cli challenge
-
 
 let der_to_pem der =
   let der = Cstruct.of_string der in
