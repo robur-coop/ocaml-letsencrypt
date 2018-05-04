@@ -13,6 +13,10 @@ let dns_out ip cs =
 
 let sleep () = Lwt_unix.sleep 5.
 
+let err_to_msg = function
+  | Ok a -> Ok a
+  | Error e -> Error (`Msg e)
+
 let main _ rsa_pem csr_pem acme_dir ip key endpoint cert =
   let open Rresult.R.Infix in
   let r =
@@ -28,9 +32,11 @@ let main _ rsa_pem csr_pem acme_dir ip key endpoint cert =
         | _, None | Error _, _ -> Error (`Msg "no key")
         | Ok name, Some key ->
           (try Ok (Unix.inet_addr_of_string ip) with Failure e -> Error (`Msg e)) >>= fun ip ->
+          err_to_msg (Primitives.priv_of_pem rsa_pem) >>= fun account_key ->
+          err_to_msg (Primitives.csr_of_pem csr_pem) >>= fun request ->
           let now = Ptime_clock.now () in
           let solver = Acme_client.default_dns_solver now (dns_out ip) name key in
-          match Lwt_main.run (Acme_cli.get_crt ~directory:(Uri.of_string endpoint) ~solver sleep rsa_pem csr_pem) with
+          match Lwt_main.run (Acme_cli.get_crt ~directory:(Uri.of_string endpoint) ~solver sleep account_key request) with
           | Error e -> Error (`Msg e)
           | Ok pem ->
             Logs.info (fun m -> m "Certificate downloaded");

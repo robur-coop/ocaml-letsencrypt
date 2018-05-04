@@ -11,6 +11,6 @@ val default_http_solver : solver_t
 
 module Make (Client : Cohttp_lwt.S.Client) : sig
   val get_crt : ?directory:Uri.t -> ?solver:solver_t ->
-    (unit -> unit Lwt.t) -> string -> string ->
+    (unit -> unit Lwt.t) -> Nocrypto.Rsa.priv -> X509.CA.signing_request ->
     (string, string) Result.result Lwt.t
 end

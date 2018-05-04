@@ -168,20 +168,10 @@ let discover directory =
   in
   Ok (nonce, directory_t)
 
-let new_cli directory rsa_pem csr_pem =
-  match
-    let open Rresult.R.Infix in
-    Primitives.priv_of_pem rsa_pem >>= fun account_key ->
-    (try Ok (Pem.Certificate_signing_request.of_pem_cstruct1 (Cstruct.of_string csr_pem))
-     with Invalid_argument i -> Error i) >>= fun csr ->
-    Ok (account_key, csr)
-  with
+let new_cli directory account_key csr =
+  discover directory >>= function
   | Error e -> Lwt.return_error e
-  | Ok (account_key, csr) ->
-    let open Lwt.Infix in
-    discover directory >>= function
-    | Error e -> Lwt.return_error e
-    | Ok (next_nonce, d)  -> Lwt.return_ok { account_key ; csr ; next_nonce ; d }
+  | Ok (next_nonce, d)  -> Lwt.return_ok { account_key ; csr ; next_nonce ; d }
 
 let http_post_jws cli data url =
   let prepare_post key nonce data =
@@ -337,10 +327,10 @@ let new_cert cli =
     | 201 -> der_to_pem body
     | _ -> error_in "new-cert" code body
 
-let get_crt ?(directory = letsencrypt_url) ?(solver = default_http_solver) sleep rsa_pem csr_pem =
+let get_crt ?(directory = letsencrypt_url) ?(solver = default_http_solver) sleep key csr =
   let open Lwt_result.Infix in
   (* create a new client *)
-  new_cli directory rsa_pem csr_pem >>= fun cli ->
+  new_cli directory key csr >>= fun cli ->
 
   (* if the client didn't register, then register. Otherwise proceed *)
   new_reg cli >>= (function
@@ -354,7 +344,6 @@ let get_crt ?(directory = letsencrypt_url) ?(solver = default_http_solver) sleep
     >>= fun () ->
 
     (* for all domains, ask the ACME server for a certificate *)
-    let csr = Pem.Certificate_signing_request.of_pem_cstruct1 (Cstruct.of_string csr_pem) in
     let domains = domains_of_csr csr in
     Lwt_list.fold_left_s
       (fun r domain ->

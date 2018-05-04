@@ -3,11 +3,14 @@ open Nocrypto
 module Pem = X509.Encoding.Pem
 
 let priv_of_pem rsa_pem =
-  let rsa_pem = Cstruct.of_string rsa_pem in
   try
-    match Pem.Private_key.of_pem_cstruct1 rsa_pem with
+    match Pem.Private_key.of_pem_cstruct1 (Cstruct.of_string rsa_pem) with
     | `RSA priv -> Ok priv
   with  Invalid_argument e -> Error e
+
+let csr_of_pem pem =
+  try Ok (Pem.Certificate_signing_request.of_pem_cstruct1 (Cstruct.of_string pem))
+  with Invalid_argument i -> Error i
 
 let pub_of_priv = Rsa.pub_of_priv
 let pub_of_z ~e ~n = Rsa.{e; n}
