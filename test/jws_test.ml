@@ -56,8 +56,8 @@ let expected_signature =
 
 let rsa_key () =
   match Primitives.priv_of_pem testkey_pem with
-  | Some skey -> skey
-  | _ -> raise (Failure "Unable to parse test RSA key.")
+  | Ok skey -> skey
+  | Error e -> assert_failure e
 
 let jws_encode_somedata () =
   let priv_key = rsa_key () in

@@ -187,17 +187,19 @@ let discover directory =
   Ok (nonce, directory_t)
 
 let new_cli directory rsa_pem csr_pem =
-  let maybe_rsa = Primitives.priv_of_pem rsa_pem in
-  let maybe_csr = Pem.Certificate_signing_request.of_pem_cstruct (Cstruct.of_string csr_pem) in
-  match maybe_rsa, maybe_csr with
-  | None, _ -> Lwt.return_error "Error parsing account key."
-  | Some x, [] -> Lwt.return_error "Error parsing signing request."
-  | Some x, y0 :: y1 :: ys -> Lwt.return_error "Error: too many signing requests."
-  | Some account_key, [csr] ->
+  match
+    let open Rresult.R.Infix in
+    Primitives.priv_of_pem rsa_pem >>= fun account_key ->
+    (try Ok (Pem.Certificate_signing_request.of_pem_cstruct1 (Cstruct.of_string csr_pem))
+     with Invalid_argument i -> Error i) >>= fun csr ->
+    Ok (account_key, csr)
+  with
+  | Error e -> Lwt.return_error e
+  | Ok (account_key, csr) ->
+    let open Lwt.Infix in
     discover directory >>= function
     | Error e -> Lwt.return_error e
-    | Ok (next_nonce, d)  ->
-      Lwt.return_ok { account_key ; csr ; next_nonce ; d }
+    | Ok (next_nonce, d)  -> Lwt.return_ok { account_key ; csr ; next_nonce ; d }
 
 let http_post_jws cli data url =
   let prepare_post key nonce data =
