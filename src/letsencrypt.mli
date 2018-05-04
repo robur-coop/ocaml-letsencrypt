@@ -26,7 +26,9 @@ module Client: sig
   val default_dns_solver : Ptime.t -> (Cstruct.t -> (unit, string) result Lwt.t) -> Dns_name.t -> Dns_packet.dnskey -> solver_t
 
   module Make (Client : Cohttp_lwt.S.Client) : sig
-    val get_crt : ?directory:Uri.t -> ?solver:solver_t ->
+    val get_crt :
+      ?ctx:Client.ctx ->
+      ?directory:Uri.t -> ?solver:solver_t ->
       (unit -> unit Lwt.t) -> Nocrypto.Rsa.priv -> X509.CA.signing_request ->
       (string, string) Result.result Lwt.t
       (** [get_crt ~directory_url ~solver sleep rsa_pem csr_pem] asks the CA identified at url

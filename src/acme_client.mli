@@ -10,7 +10,9 @@ val default_dns_solver : Ptime.t -> (Cstruct.t -> (unit, string) result Lwt.t) -
 val default_http_solver : solver_t
 
 module Make (Client : Cohttp_lwt.S.Client) : sig
-  val get_crt : ?directory:Uri.t -> ?solver:solver_t ->
+  val get_crt :
+    ?ctx:Client.ctx ->
+    ?directory:Uri.t -> ?solver:solver_t ->
     (unit -> unit Lwt.t) -> Nocrypto.Rsa.priv -> X509.CA.signing_request ->
     (string, string) Result.result Lwt.t
 end

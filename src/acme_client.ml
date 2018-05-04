@@ -137,8 +137,8 @@ let default_dns_solver now out keyname key =
 
 module Make (Client : Cohttp_lwt.S.Client) = struct
 
-let http_get url =
-  Client.get url >>= fun (resp, body) ->
+let http_get ?ctx url =
+  Client.get ?ctx url >>= fun (resp, body) ->
   let code = resp |> Cohttp.Response.status |> Cohttp.Code.code_of_status in
   let headers = resp |> Cohttp.Response.headers in
   body |> Cohttp_lwt.Body.to_string >>= fun body ->
@@ -148,8 +148,8 @@ let http_get url =
   Logs.debug (fun m -> m "body \"%s\"" (String.escaped body));
   Lwt.return (code, headers, body)
 
-let discover directory =
-  http_get directory >|= fun (code, headers, body) ->
+let discover ?ctx directory =
+  http_get ?ctx directory >|= fun (code, headers, body) ->
   let open Rresult.R.Infix in
   extract_nonce headers >>= fun nonce ->
   Json.of_string body >>= fun edir ->
@@ -168,12 +168,12 @@ let discover directory =
   in
   Ok (nonce, directory_t)
 
-let new_cli directory account_key csr =
-  discover directory >>= function
+let new_cli ?ctx directory account_key csr =
+  discover ?ctx directory >>= function
   | Error e -> Lwt.return_error e
   | Ok (next_nonce, d)  -> Lwt.return_ok { account_key ; csr ; next_nonce ; d }
 
-let http_post_jws cli data url =
+let http_post_jws ?ctx cli data url =
   let prepare_post key nonce data =
     let body = Jws.encode key data nonce in
     let body_len = string_of_int (String.length body) in
@@ -185,7 +185,7 @@ let http_post_jws cli data url =
   Logs.debug (fun m -> m "HTTP post %a (data %s body %s)"
                  Uri.pp_hum url data (String.escaped body));
   let body = Cohttp_lwt.Body.of_string body in
-  Client.post ~body ~headers url >>= fun (resp, body) ->
+  Client.post ?ctx ~body ~headers url >>= fun (resp, body) ->
   let code = resp |> Cohttp.Response.status |> Cohttp.Code.code_of_status in
   let headers = resp |> Cohttp.Response.headers in
   body |> Cohttp_lwt.Body.to_string >>= fun body ->
@@ -207,10 +207,10 @@ let get_terms_of_service links =
               links)
   with Not_found -> None
 
-let new_reg cli =
+let new_reg ?ctx cli =
   let url = cli.d.new_reg in
   let body = {|{"resource": "new-reg"}|} in
-  http_post_jws cli body url >|= function
+  http_post_jws ?ctx cli body url >|= function
   | Error e -> Error e
   | Ok (code, headers, body) ->
     match code with
@@ -232,14 +232,14 @@ let new_reg cli =
       Ok None
     | _ -> error_in "new-reg" code body
 
-let accept_terms cli ~url ~terms =
+let accept_terms ?ctx cli ~url ~terms =
   let body =
     Json.to_string (`Assoc [
         ("resource", `String "reg");
         ("agreement", `String (Uri.to_string terms));
       ])
   in
-  http_post_jws cli body url >|= function
+  http_post_jws ?ctx cli body url >|= function
   | Error e -> Error e
   | Ok (code, headers, body) ->
     match code with
@@ -247,13 +247,13 @@ let accept_terms cli ~url ~terms =
     | 409 -> Logs.info (fun m -> m "Already registered."); Ok ()
     | _ -> error_in "accept_terms" code body
 
-let new_authz cli domain get_challenge =
+let new_authz ?ctx cli domain get_challenge =
   let url = cli.d.new_authz in
   let body = Printf.sprintf
       {|{"resource": "new-authz", "identifier": {"type": "dns", "value": "%s"}}|}
       domain
   in
-  http_post_jws cli body url >|= function
+  http_post_jws ?ctx cli body url >|= function
   | Error e -> Error e
   | Ok (code, headers, body) ->
     let open Rresult.R.Infix in
@@ -264,7 +264,7 @@ let new_authz cli domain get_challenge =
     (* XXX. any other codes to handle? *)
     | _ -> error_in "new-authz" code body
 
-let challenge_met cli ct challenge =
+let challenge_met ?ctx cli ct challenge =
   let token = challenge.token in
   let pub = Primitives.pub_of_priv cli.account_key in
   let thumbprint = Jwk.thumbprint (`Rsa pub) in
@@ -286,13 +286,13 @@ let challenge_met cli ct challenge =
       {|{"resource": "challenge", "type": "%s", "keyAuthorization": "%s"}|}
       ct key_authorization
   in
-  http_post_jws cli data challenge.url >>= fun _ ->
+  http_post_jws ?ctx cli data challenge.url >>= fun _ ->
   (* XXX. here we should deal with the resulting codes, at least. *)
   Lwt.return_ok ()
 
 
-let poll_challenge_status cli challenge =
-  http_get challenge.url >|= fun (code, headers, body) ->
+let poll_challenge_status ?ctx cli challenge =
+  http_get ?ctx challenge.url >|= fun (code, headers, body) ->
   let open Rresult.R.Infix in
   Json.of_string body >>= fun challenge_status ->
   match Json.string_member "status" challenge_status with
@@ -301,14 +301,14 @@ let poll_challenge_status cli challenge =
   | Ok "pending" | Error _ -> Ok true
   | Ok status -> error_in ("polling " ^ status) code body
 
-let rec poll_until sleep cli challenge =
-  poll_challenge_status cli challenge >>= function
+let rec poll_until ?ctx sleep cli challenge =
+  poll_challenge_status ?ctx cli challenge >>= function
   | Error e  -> Lwt.return_error e
   | Ok false -> Lwt.return_ok ()
   | Ok true  ->
     Logs.info (fun m -> m "Polling...");
     sleep () >>= fun () ->
-    poll_until sleep cli challenge
+    poll_until ?ctx sleep cli challenge
 
 let der_to_pem der =
   let der = Cstruct.of_string der in
@@ -316,28 +316,28 @@ let der_to_pem der =
   | Some crt -> Ok (Pem.Certificate.to_pem_cstruct [crt] |> Cstruct.to_string)
   | None -> Error "I got gibberish while trying to decode the new certificate."
 
-let new_cert cli =
+let new_cert ?ctx cli =
   let url = cli.d.new_cert in
   let der = X509.Encoding.cs_of_signing_request cli.csr |> Cstruct.to_string |> B64u.urlencode in
   let data = Printf.sprintf {|{"resource": "new-cert", "csr": "%s"}|} der in
-  http_post_jws cli data url >|= function
+  http_post_jws ?ctx cli data url >|= function
   | Error e -> Error e
   | Ok (code, headers, body) ->
     match code with
     | 201 -> der_to_pem body
     | _ -> error_in "new-cert" code body
 
-let get_crt ?(directory = letsencrypt_url) ?(solver = default_http_solver) sleep key csr =
+let get_crt ?ctx ?(directory = letsencrypt_url) ?(solver = default_http_solver) sleep key csr =
   let open Lwt_result.Infix in
   (* create a new client *)
-  new_cli directory key csr >>= fun cli ->
+  new_cli ?ctx directory key csr >>= fun cli ->
 
   (* if the client didn't register, then register. Otherwise proceed *)
-  new_reg cli >>= (function
+  new_reg ?ctx cli >>= (function
       | Some (terms_link, accept_url) ->
         let terms = terms_link.Cohttp.Link.target in
         Logs.info (fun f -> f "Accepting terms at %s\n" (Uri.to_string terms));
-        accept_terms cli ~url:accept_url ~terms
+        accept_terms ?ctx cli ~url:accept_url ~terms
       | None ->
         Logs.info (fun f -> f "No ToS.");
         Lwt.return_ok ())
@@ -349,12 +349,12 @@ let get_crt ?(directory = letsencrypt_url) ?(solver = default_http_solver) sleep
       (fun r domain ->
          match r with
          | Ok () ->
-           new_authz cli domain solver.get_challenge >>= fun challenge ->
+           new_authz ?ctx cli domain solver.get_challenge >>= fun challenge ->
            solver.solve_challenge cli challenge domain >>= fun () ->
-           challenge_met cli solver.name challenge >>= fun () ->
-           poll_until sleep cli challenge
+           challenge_met ?ctx cli solver.name challenge >>= fun () ->
+           poll_until ?ctx sleep cli challenge
          | Error r -> Lwt.return_error r)
       (Ok ()) domains >>= fun () ->
-      new_cert cli >>= fun pem ->
+      new_cert ?ctx cli >>= fun pem ->
       Lwt.return_ok pem
 end

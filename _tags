@@ -9,3 +9,5 @@ true: package(cohttp yojson lwt cohttp-lwt base64 nocrypto zarith logs astring r
 <bin/acme_server.{ml,native,byte}>: package(dispatch)
 
 <test/*>: package(oUnit nocrypto.unix x509)
+
+<mirage>: -traverse
