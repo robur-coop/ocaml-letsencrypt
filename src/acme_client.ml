@@ -22,9 +22,6 @@ type solver_t = {
   solve_challenge : t -> challenge_t -> string -> (unit, string) Result.result Lwt.t ;
 }
 
-let malformed_json j =
-  Error (Printf.sprintf "malformed json: %s" (Json.to_string j))
-
 let error_in endpoint code body =
   let body = String.escaped body in
   Error (Printf.sprintf "Error at %s: code %d - body: %s" endpoint code body)
