@@ -1,5 +1,4 @@
-open Cohttp
-open Lwt
+open Lwt.Infix
 
 open Acme_common
 
@@ -30,10 +29,10 @@ let malformed_json j =
 let error_in endpoint code body =
   let body = String.escaped body in
   let msg = Printf.sprintf "Error at %s: code %d - body: %s" endpoint code body in
-  return_error msg
+  Lwt.return_error msg
 
 let extract_nonce headers =
-  match Header.get headers "Replay-Nonce" with
+  match Cohttp.Header.get headers "Replay-Nonce" with
   | Some nonce -> Ok nonce
   | None -> Error "Error: I could not fetch a new nonce."
 
@@ -67,7 +66,7 @@ let http_solver writef =
     let thumbprint = Jwk.thumbprint (`Rsa pk) in
     let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
     writef domain token key_authorization;
-    return_ok ()
+    Lwt.return_ok ()
   in
   {
     name = name ;
@@ -125,15 +124,15 @@ let default_dns_solver ip keyname key =
     Logs.app (fun m -> m "sending DNS update frame: %a %a" Dns_packet.pp_header header Dns_packet.pp_update nsupdate) ;
     let b, _ = Dns_packet.encode `Udp (header, `Update nsupdate) in
     match Dns_packet.dnskey_to_tsig_algo key with
-    | None -> fail_with "cannot discover tsig algorithm of key"
+    | None -> Lwt.fail_with "cannot discover tsig algorithm of key"
     | Some algorithm ->
       let signed = Ptime_clock.now () in
       match Dns_packet.tsig ~algorithm ~signed () with
-      | None -> fail_with "couldn't create tsig"
+      | None -> Lwt.fail_with "couldn't create tsig"
       | Some tsig ->
         Logs.app (fun m -> m "tsig is %a" Dns_packet.pp_tsig tsig) ;
         match Dns_tsig.sign keyname ~key tsig b with
-        | None -> fail_with "key is not good"
+        | None -> Lwt.fail_with "key is not good"
         | Some (b, _) ->
           let bl = Cstruct.len b in
           Logs.app (fun m -> m "signed %a" Cstruct.hexdump_pp b) ;
@@ -141,7 +140,7 @@ let default_dns_solver ip keyname key =
           let server = Lwt_unix.ADDR_INET (ip, 53) in
           Lwt_unix.sendto out (Cstruct.to_bytes b) 0 bl [] server >>= fun n ->
           Lwt_unix.sleep 2. >>= fun () ->
-          if n = bl then return_ok () else fail_with "couldn't send nsupdate"
+          if n = bl then Lwt.return_ok () else Lwt.fail_with "couldn't send nsupdate"
   in
 (*  let default_writef domain record =
     Logs.info (fun f -> f "_acme-challenge.%s. 300 IN TXT \"%s\"\n" domain record);
@@ -154,15 +153,15 @@ module Make (Client : Cohttp_lwt.S.Client) = struct
 
 let http_get url =
   Client.get url >>= fun (resp, body) ->
-  let code = resp |> Response.status |> Code.code_of_status in
-  let headers = resp |> Response.headers in
+  let code = resp |> Cohttp.Response.status |> Cohttp.Code.code_of_status in
+  let headers = resp |> Cohttp.Response.headers in
   body |> Cohttp_lwt.Body.to_string >>= fun body ->
-  return (code, headers, body)
+  Lwt.return (code, headers, body)
 
 let discover directory =
   http_get directory >>= fun (code, headers, body) ->
   match extract_nonce headers, Json.of_string body with
-  | Error e, _ -> return_error e
+  | Error e, _ -> Lwt.return_error e
   | _, None -> error_in "discovery" code body
   | Ok nonce, Some edir ->
     let p m = Json.string_member m edir in
@@ -176,46 +175,46 @@ let discover directory =
         new_cert = u new_cert;
         revoke_cert = u revoke_cert }
       in
-      return_ok (nonce, directory_t)
+      Lwt.return_ok (nonce, directory_t)
     | _, _, _, _ ->
-      return (malformed_json edir)
+      Lwt.return (malformed_json edir)
 
 let new_cli directory rsa_pem csr_pem =
   let maybe_rsa = Primitives.priv_of_pem rsa_pem in
   let maybe_csr = Pem.Certificate_signing_request.of_pem_cstruct (Cstruct.of_string csr_pem) in
   match maybe_rsa, maybe_csr with
-  | None, _ -> return_error "Error parsing account key."
-  | Some x, [] -> return_error "Error parsing signing request."
-  | Some x, y0 :: y1 :: ys -> return_error "Error: too many signing requests."
+  | None, _ -> Lwt.return_error "Error parsing account key."
+  | Some x, [] -> Lwt.return_error "Error parsing signing request."
+  | Some x, y0 :: y1 :: ys -> Lwt.return_error "Error: too many signing requests."
   | Some account_key, [csr] ->
     discover directory >>= function
-    | Error e -> return_error e
+    | Error e -> Lwt.return_error e
     | Ok (next_nonce, d)  ->
-      return_ok { account_key ; csr ; next_nonce ; d }
+      Lwt.return_ok { account_key ; csr ; next_nonce ; d }
 
 
 let http_post_jws cli data url =
   let http_post key nonce data url =
     let body = Jws.encode key data nonce  in
     let body_len = string_of_int (String.length body) in
-    let header = Header.init () in
-    let header = Header.add header "Content-Length" body_len in
+    let header = Cohttp.Header.init () in
+    let header = Cohttp.Header.add header "Content-Length" body_len in
     let body = Cohttp_lwt.Body.of_string body in
     Client.post ~body:body ~headers:header url
   in
   http_post cli.account_key cli.next_nonce data url >>= fun (resp, body) ->
-  let code = resp |> Response.status |> Code.code_of_status in
-  let headers = resp |> Response.headers in
+  let code = resp |> Cohttp.Response.status |> Cohttp.Code.code_of_status in
+  let headers = resp |> Cohttp.Response.headers in
   body |> Cohttp_lwt.Body.to_string >>= fun body ->
   Logs.debug (fun m -> m "Got code: %d" code);
   Logs.debug (fun m -> m "headers \"%s\"" (String.escaped @@ Cohttp.Header.to_string headers));
   Logs.debug (fun m -> m "body \"%s\"" (String.escaped body));
   match extract_nonce headers with
-  | Error e -> return_error e
+  | Error e -> Lwt.return_error e
   | Ok next_nonce ->
     (* XXX: is this like cheating? *)
     cli.next_nonce <- next_nonce;
-    return_ok (code, headers, body)
+    Lwt.return_ok (code, headers, body)
 
 let get_terms_of_service links =
   try Some (List.find
@@ -239,13 +238,13 @@ let new_reg cli =
          | None -> failwith "Accept url without terms-of-service"
        in
        Logs.info (fun m -> m "Must accept terms.");
-       return_ok (Some (terms, accept_url))
+       Lwt.return_ok (Some (terms, accept_url))
      | None ->
        Logs.info (fun m -> m "Account created.");
-       return_ok None)
+       Lwt.return_ok None)
   | 409 ->
     Logs.info (fun m -> m "Already registered.");
-    return_ok None
+    Lwt.return_ok None
   | _   -> error_in "new-reg" code body
 
 let accept_terms cli ~url ~terms =
@@ -258,8 +257,8 @@ let accept_terms cli ~url ~terms =
   in
   http_post_jws cli body url >>= fun (code, headers, body) ->
   match code with
-  | 202 -> Logs.info (fun m -> m "Terms accepted."); return_ok ()
-  | 409 -> Logs.info (fun m -> m "Already registered."); return_ok ()
+  | 202 -> Logs.info (fun m -> m "Terms accepted."); Lwt.return_ok ()
+  | 409 -> Logs.info (fun m -> m "Already registered."); Lwt.return_ok ()
   | _ -> error_in "accept_terms" code body
 
 
@@ -275,7 +274,7 @@ let new_authz cli domain get_challenge =
   | 201 ->
     begin
       match Json.of_string body with
-      | Some authorization -> return (get_challenge authorization)
+      | Some authorization -> Lwt.return (get_challenge authorization)
       | None -> error_in "new-auth" code body
     end
   (* XXX. any other codes to handle? *)
@@ -306,7 +305,7 @@ let challenge_met cli ct challenge =
   in
   http_post_jws cli data challenge.url >>= fun _ ->
   (* XXX. here we should deal with the resulting codes, at least. *)
-  return_ok ()
+  Lwt.return_ok ()
 
 
 let poll_challenge_status cli challenge =
@@ -316,9 +315,9 @@ let poll_challenge_status cli challenge =
     begin
       let status =  Json.string_member "status" challenge_status in
       match status with
-      | Some "valid" -> return_ok false
+      | Some "valid" -> Lwt.return_ok false
       (* «If this field is missing, then the default value is "pending".» *)
-      | Some "pending" | None -> return_ok true
+      | Some "pending" | None -> Lwt.return_ok true
       | Some status -> error_in "polling" code body
     end
   | _ -> error_in "polling" code body
@@ -326,8 +325,8 @@ let poll_challenge_status cli challenge =
 
 let rec poll_until cli challenge =
   poll_challenge_status cli challenge >>= function
-  | Error e  -> return_error e
-  | Ok false -> return_ok ()
+  | Error e  -> Lwt.return_error e
+  | Ok false -> Lwt.return_ok ()
   | Ok true  ->
     Logs.info (fun m -> m "Polling...");
     Lwt_unix.sleep 5. >>= fun () ->
@@ -347,7 +346,7 @@ let new_cert cli =
   let data = Printf.sprintf {|{"resource": "new-cert", "csr": "%s"}|} der in
   http_post_jws cli data url >>= fun (code, headers, body) ->
   match code with
-  | 201 -> return (der_to_pem body)
+  | 201 -> Lwt.return (der_to_pem body)
   | _ -> error_in "new-cert" code body
 
 let get_crt rsa_pem csr_pem ?(directory = letsencrypt_url) ?(solver = default_http_solver) =
@@ -363,7 +362,7 @@ let get_crt rsa_pem csr_pem ?(directory = letsencrypt_url) ?(solver = default_ht
         accept_terms cli ~url:accept_url ~terms
       | None ->
         Logs.info (fun f -> f "No ToS.");
-        return_ok ())
+        Lwt.return_ok ())
   >>= fun () ->
   (* for all domains, ask the ACME server for a certificate *)
   let csr = Pem.Certificate_signing_request.of_pem_cstruct1 (Cstruct.of_string csr_pem) in
@@ -380,5 +379,5 @@ let get_crt rsa_pem csr_pem ?(directory = letsencrypt_url) ?(solver = default_ht
          Lwt.return_error "oh fuck")
     (Ok ()) domains >>= fun () ->
   new_cert cli >>= fun pem ->
-  return_ok pem
+  Lwt.return_ok pem
 end
