@@ -23,15 +23,13 @@ module Client: sig
 
   type solver_t
   val default_http_solver : solver_t
-  val default_dns_solver : Unix.inet_addr -> Dns_name.t -> Dns_packet.dnskey -> solver_t
+  val default_dns_solver : Ptime.t -> (Cstruct.t -> (unit, string) result Lwt.t) -> Dns_name.t -> Dns_packet.dnskey -> solver_t
 
   module Make (Client : Cohttp_lwt.S.Client) : sig
-    val get_crt : string ->
-      string ->
-      ?directory:Uri.t ->
-      ?solver:solver_t ->
+    val get_crt : ?directory:Uri.t -> ?solver:solver_t ->
+      (unit -> unit Lwt.t) -> string -> string ->
       (string, string) Result.result Lwt.t
-      (** [get_crt directory_url rsa_pem csr_pem] asks the CA identified at url
+      (** [get_crt ~directory_url ~solver sleep rsa_pem csr_pem] asks the CA identified at url
           [directory] for signing [csr_pem] with account key [account_pem] for all
           domains in [csr_pem].  This functions accepts an optionl argument
           [solver] specifying how to solve the challenge provided by the CA.  The

@@ -2,9 +2,16 @@ open Lwt
 
 module Acme_cli = Acme_client.Make(Cohttp_lwt_unix.Client)
 
-let run rsa_pem csr_pem directory solver =
-  Nocrypto_entropy_lwt.initialize () >>= fun () ->
-  Acme_cli.get_crt rsa_pem csr_pem ~directory ~solver
+let dns_out ip cs =
+  let out = Lwt_unix.(socket PF_INET SOCK_DGRAM 0) in
+  let server = Lwt_unix.ADDR_INET (ip, 53) in
+  let bl = Cstruct.len cs in
+  Lwt_unix.sendto out (Cstruct.to_bytes cs) 0 bl [] server >>= fun n ->
+  (* TODO should listen for a reply from NS, report potential errors and retransmit if UDP frame got lost *)
+  Lwt_unix.sleep 2. >>= fun () ->
+  if n = bl then Lwt.return_ok () else Lwt.return_error "couldn't send nsupdate"
+
+let sleep () = Lwt_unix.sleep 5.
 
 let main _ rsa_pem csr_pem acme_dir ip key endpoint cert =
   let open Rresult.R.Infix in
@@ -20,8 +27,10 @@ let main _ rsa_pem csr_pem acme_dir ip key endpoint cert =
       | Some (name, key) -> match Dns_name.of_string ~hostname:false name, Dns_packet.dnskey_of_string key with
         | _, None | Error _, _ -> Error (`Msg "no key")
         | Ok name, Some key ->
-          let solver = Acme_client.default_dns_solver (Unix.inet_addr_of_string ip) name key in
-          match Lwt_main.run (run rsa_pem csr_pem (Uri.of_string endpoint) solver) with
+          (try Ok (Unix.inet_addr_of_string ip) with Failure e -> Error (`Msg e)) >>= fun ip ->
+          let now = Ptime_clock.now () in
+          let solver = Acme_client.default_dns_solver now (dns_out ip) name key in
+          match Lwt_main.run (Acme_cli.get_crt ~directory:(Uri.of_string endpoint) ~solver sleep rsa_pem csr_pem) with
           | Error e -> Error (`Msg e)
           | Ok pem ->
             Logs.info (fun m -> m "Certificate downloaded");

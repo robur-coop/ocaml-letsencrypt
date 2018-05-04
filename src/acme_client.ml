@@ -102,7 +102,7 @@ let dns_solver writef =
     solve_challenge = solve_dns01_challenge
   }
 
-let default_dns_solver ip keyname key =
+let default_dns_solver now out keyname key =
   let nsupdate host record =
     let name = Dns_name.prepend_exn ~hostname:false (Dns_name.of_string_exn host) "_acme-challenge" in
     let nsupdate =
@@ -122,33 +122,18 @@ let default_dns_solver ip keyname key =
                    recursion_available = false ; authentic_data = false ; checking_disabled = false ;
                    rcode = Dns_enum.NoError }
     in
-    Logs.app (fun m -> m "sending DNS update frame: %a %a" Dns_packet.pp_header header Dns_packet.pp_update nsupdate) ;
     let b, _ = Dns_packet.encode `Udp (header, `Update nsupdate) in
     match Dns_packet.dnskey_to_tsig_algo key with
     | None -> Lwt.return_error "cannot discover tsig algorithm of key"
     | Some algorithm ->
-      let signed = Ptime_clock.now () in
-      match Dns_packet.tsig ~algorithm ~signed () with
+      match Dns_packet.tsig ~algorithm ~signed:now () with
       | None -> Lwt.return_error "couldn't create tsig"
       | Some tsig ->
-        Logs.app (fun m -> m "tsig is %a" Dns_packet.pp_tsig tsig) ;
         match Dns_tsig.sign keyname ~key tsig b with
         | None -> Lwt.return_error "key is not good"
-        | Some (b, _) ->
-          let bl = Cstruct.len b in
-          Logs.app (fun m -> m "signed %a" Cstruct.hexdump_pp b) ;
-          let out = Lwt_unix.(socket PF_INET SOCK_DGRAM 0) in
-          let server = Lwt_unix.ADDR_INET (ip, 53) in
-          Lwt_unix.sendto out (Cstruct.to_bytes b) 0 bl [] server >>= fun n ->
-          Lwt_unix.sleep 2. >>= fun () ->
-          if n = bl then Lwt.return_ok () else Lwt.return_error "couldn't send nsupdate"
+        | Some (b, _) -> out b
   in
-(*  let default_writef domain record =
-    Logs.info (fun f -> f "_acme-challenge.%s. 300 IN TXT \"%s\"\n" domain record);
-    let _ = read_line () in
-    Lwt.return_ok ()
-    in *)
-  dns_solver (* default_writef *) nsupdate
+  dns_solver nsupdate
 
 module Make (Client : Cohttp_lwt.S.Client) = struct
 
@@ -326,14 +311,14 @@ let poll_challenge_status cli challenge =
   | Ok "pending" | Error _ -> Ok true
   | Ok status -> error_in ("polling " ^ status) code body
 
-let rec poll_until cli challenge =
+let rec poll_until sleep cli challenge =
   poll_challenge_status cli challenge >>= function
   | Error e  -> Lwt.return_error e
   | Ok false -> Lwt.return_ok ()
   | Ok true  ->
     Logs.info (fun m -> m "Polling...");
-    Lwt_unix.sleep 5. >>= fun () ->
-    poll_until cli challenge
+    sleep () >>= fun () ->
+    poll_until sleep cli challenge
 
 let der_to_pem der =
   let der = Cstruct.of_string der in
@@ -352,7 +337,7 @@ let new_cert cli =
     | 201 -> der_to_pem body
     | _ -> error_in "new-cert" code body
 
-let get_crt rsa_pem csr_pem ?(directory = letsencrypt_url) ?(solver = default_http_solver) =
+let get_crt ?(directory = letsencrypt_url) ?(solver = default_http_solver) sleep rsa_pem csr_pem =
   let open Lwt_result.Infix in
   (* create a new client *)
   new_cli directory rsa_pem csr_pem >>= fun cli ->
@@ -378,7 +363,7 @@ let get_crt rsa_pem csr_pem ?(directory = letsencrypt_url) ?(solver = default_ht
            new_authz cli domain solver.get_challenge >>= fun challenge ->
            solver.solve_challenge cli challenge domain >>= fun () ->
            challenge_met cli solver.name challenge >>= fun () ->
-           poll_until cli challenge
+           poll_until sleep cli challenge
          | Error r -> Lwt.return_error r)
       (Ok ()) domains >>= fun () ->
       new_cert cli >>= fun pem ->
