@@ -122,15 +122,15 @@ let default_dns_solver ip keyname key =
     Logs.app (fun m -> m "sending DNS update frame: %a %a" Dns_packet.pp_header header Dns_packet.pp_update nsupdate) ;
     let b, _ = Dns_packet.encode `Udp (header, `Update nsupdate) in
     match Dns_packet.dnskey_to_tsig_algo key with
-    | None -> Lwt.fail_with "cannot discover tsig algorithm of key"
+    | None -> Lwt.return_error "cannot discover tsig algorithm of key"
     | Some algorithm ->
       let signed = Ptime_clock.now () in
       match Dns_packet.tsig ~algorithm ~signed () with
-      | None -> Lwt.fail_with "couldn't create tsig"
+      | None -> Lwt.return_error "couldn't create tsig"
       | Some tsig ->
         Logs.app (fun m -> m "tsig is %a" Dns_packet.pp_tsig tsig) ;
         match Dns_tsig.sign keyname ~key tsig b with
-        | None -> Lwt.fail_with "key is not good"
+        | None -> Lwt.return_error "key is not good"
         | Some (b, _) ->
           let bl = Cstruct.len b in
           Logs.app (fun m -> m "signed %a" Cstruct.hexdump_pp b) ;
@@ -138,7 +138,7 @@ let default_dns_solver ip keyname key =
           let server = Lwt_unix.ADDR_INET (ip, 53) in
           Lwt_unix.sendto out (Cstruct.to_bytes b) 0 bl [] server >>= fun n ->
           Lwt_unix.sleep 2. >>= fun () ->
-          if n = bl then Lwt.return_ok () else Lwt.fail_with "couldn't send nsupdate"
+          if n = bl then Lwt.return_ok () else Lwt.return_error "couldn't send nsupdate"
   in
 (*  let default_writef domain record =
     Logs.info (fun f -> f "_acme-challenge.%s. 300 IN TXT \"%s\"\n" domain record);
