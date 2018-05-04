@@ -23,13 +23,11 @@ type solver_t = {
 }
 
 let malformed_json j =
-  let msg = Printf.sprintf "malformed json: %s" (Json.to_string j) in
-  Error msg
+  Error (Printf.sprintf "malformed json: %s" (Json.to_string j))
 
 let error_in endpoint code body =
   let body = String.escaped body in
-  let msg = Printf.sprintf "Error at %s: code %d - body: %s" endpoint code body in
-  Lwt.return_error msg
+  Error (Printf.sprintf "Error at %s: code %d - body: %s" endpoint code body)
 
 let extract_nonce headers =
   match Cohttp.Header.get headers "Replay-Nonce" with
@@ -159,9 +157,9 @@ let http_get url =
   Lwt.return (code, headers, body)
 
 let discover directory =
-  http_get directory >>= fun (code, headers, body) ->
+  http_get directory >|= fun (code, headers, body) ->
   match extract_nonce headers, Json.of_string body with
-  | Error e, _ -> Lwt.return_error e
+  | Error e, _ -> Error e
   | _, None -> error_in "discovery" code body
   | Ok nonce, Some edir ->
     let p m = Json.string_member m edir in
@@ -175,9 +173,9 @@ let discover directory =
         new_cert = u new_cert;
         revoke_cert = u revoke_cert }
       in
-      Lwt.return_ok (nonce, directory_t)
+      Ok (nonce, directory_t)
     | _, _, _, _ ->
-      Lwt.return (malformed_json edir)
+      malformed_json edir
 
 let new_cli directory rsa_pem csr_pem =
   let maybe_rsa = Primitives.priv_of_pem rsa_pem in
@@ -225,61 +223,63 @@ let get_terms_of_service links =
   with Not_found -> None
 
 let new_reg cli =
-  let open Lwt_result.Infix in
   let url = cli.d.new_reg in
   let body = {|{"resource": "new-reg"}|} in
-  http_post_jws cli body url >>= fun (code, headers, body) ->
-  match code with
-  | 201 ->
-    (match Cohttp.Header.get_location headers with
-     | Some accept_url ->
-       let terms = match Cohttp.Header.get_links headers |> get_terms_of_service with
-         | Some terms -> terms
-         | None -> failwith "Accept url without terms-of-service"
-       in
-       Logs.info (fun m -> m "Must accept terms.");
-       Lwt.return_ok (Some (terms, accept_url))
-     | None ->
-       Logs.info (fun m -> m "Account created.");
-       Lwt.return_ok None)
-  | 409 ->
-    Logs.info (fun m -> m "Already registered.");
-    Lwt.return_ok None
-  | _   -> error_in "new-reg" code body
+  http_post_jws cli body url >|= function
+  | Error e -> Error e
+  | Ok (code, headers, body) ->
+    match code with
+    | 201 ->
+      begin match Cohttp.Header.get_location headers with
+        | Some accept_url ->
+          begin match Cohttp.Header.get_links headers |> get_terms_of_service with
+            | Some terms ->
+              Logs.info (fun m -> m "Must accept terms.");
+              Ok (Some (terms, accept_url))
+            | None -> Error "Accept url without terms-of-service"
+          end
+        | None ->
+          Logs.info (fun m -> m "Account created.");
+          Ok None
+      end
+    | 409 ->
+      Logs.info (fun m -> m "Already registered.");
+      Ok None
+    | _ -> error_in "new-reg" code body
 
 let accept_terms cli ~url ~terms =
-  let open Lwt_result.Infix in
   let body =
     Json.to_string (`Assoc [
         ("resource", `String "reg");
         ("agreement", `String (Uri.to_string terms));
       ])
   in
-  http_post_jws cli body url >>= fun (code, headers, body) ->
-  match code with
-  | 202 -> Logs.info (fun m -> m "Terms accepted."); Lwt.return_ok ()
-  | 409 -> Logs.info (fun m -> m "Already registered."); Lwt.return_ok ()
-  | _ -> error_in "accept_terms" code body
-
+  http_post_jws cli body url >|= function
+  | Error e -> Error e
+  | Ok (code, headers, body) ->
+    match code with
+    | 202 -> Logs.info (fun m -> m "Terms accepted."); Ok ()
+    | 409 -> Logs.info (fun m -> m "Already registered."); Ok ()
+    | _ -> error_in "accept_terms" code body
 
 let new_authz cli domain get_challenge =
-  let open Lwt_result.Infix in
   let url = cli.d.new_authz in
   let body = Printf.sprintf
       {|{"resource": "new-authz", "identifier": {"type": "dns", "value": "%s"}}|}
       domain
   in
-  http_post_jws cli body url >>= fun (code, headers, body) ->
-  match code with
-  | 201 ->
-    begin
-      match Json.of_string body with
-      | Some authorization -> Lwt.return (get_challenge authorization)
-      | None -> error_in "new-auth" code body
-    end
-  (* XXX. any other codes to handle? *)
-  | _ -> error_in "new-authz" code body
-
+  http_post_jws cli body url >|= function
+  | Error e -> Error e
+  | Ok (code, headers, body) ->
+    match code with
+    | 201 ->
+      begin
+        match Json.of_string body with
+        | Some authorization -> get_challenge authorization
+        | None -> error_in "new-authz (json.of_string)" code body
+      end
+    (* XXX. any other codes to handle? *)
+    | _ -> error_in "new-authz" code body
 
 let challenge_met cli ct challenge =
   let token = challenge.token in
@@ -309,15 +309,15 @@ let challenge_met cli ct challenge =
 
 
 let poll_challenge_status cli challenge =
-  http_get challenge.url >>= fun (code, headers, body) ->
+  http_get challenge.url >|= fun (code, headers, body) ->
   match Json.of_string body with
   | Some challenge_status ->
     begin
-      let status =  Json.string_member "status" challenge_status in
+      let status = Json.string_member "status" challenge_status in
       match status with
-      | Some "valid" -> Lwt.return_ok false
+      | Some "valid" -> Ok false
       (* «If this field is missing, then the default value is "pending".» *)
-      | Some "pending" | None -> Lwt.return_ok true
+      | Some "pending" | None -> Ok true
       | Some status -> error_in "polling" code body
     end
   | _ -> error_in "polling" code body
@@ -340,14 +340,15 @@ let der_to_pem der =
   | None -> Error "I got gibberish while trying to decode the new certificate."
 
 let new_cert cli =
-  let open Lwt_result.Infix in
   let url = cli.d.new_cert in
   let der = X509.Encoding.cs_of_signing_request cli.csr |> Cstruct.to_string |> B64u.urlencode in
   let data = Printf.sprintf {|{"resource": "new-cert", "csr": "%s"}|} der in
-  http_post_jws cli data url >>= fun (code, headers, body) ->
-  match code with
-  | 201 -> Lwt.return (der_to_pem body)
-  | _ -> error_in "new-cert" code body
+  http_post_jws cli data url >|= function
+  | Error e -> Error e
+  | Ok (code, headers, body) ->
+    match code with
+    | 201 -> der_to_pem body
+    | _ -> error_in "new-cert" code body
 
 let get_crt rsa_pem csr_pem ?(directory = letsencrypt_url) ?(solver = default_http_solver) =
   let open Lwt_result.Infix in
@@ -363,21 +364,21 @@ let get_crt rsa_pem csr_pem ?(directory = letsencrypt_url) ?(solver = default_ht
       | None ->
         Logs.info (fun f -> f "No ToS.");
         Lwt.return_ok ())
-  >>= fun () ->
-  (* for all domains, ask the ACME server for a certificate *)
-  let csr = Pem.Certificate_signing_request.of_pem_cstruct1 (Cstruct.of_string csr_pem) in
-  let domains = domains_of_csr csr in
-  Lwt_list.fold_left_s
-    (fun r domain ->
-       match r with
-       | Ok () ->
-         new_authz cli domain solver.get_challenge >>= fun challenge ->
-         solver.solve_challenge cli challenge domain >>= fun () ->
-         challenge_met cli solver.name challenge >>= fun () ->
-         poll_until cli challenge
-       | Error r ->
-         Lwt.return_error "oh fuck")
-    (Ok ()) domains >>= fun () ->
-  new_cert cli >>= fun pem ->
-  Lwt.return_ok pem
+    >>= fun () ->
+
+    (* for all domains, ask the ACME server for a certificate *)
+    let csr = Pem.Certificate_signing_request.of_pem_cstruct1 (Cstruct.of_string csr_pem) in
+    let domains = domains_of_csr csr in
+    Lwt_list.fold_left_s
+      (fun r domain ->
+         match r with
+         | Ok () ->
+           new_authz cli domain solver.get_challenge >>= fun challenge ->
+           solver.solve_challenge cli challenge domain >>= fun () ->
+           challenge_met cli solver.name challenge >>= fun () ->
+           poll_until cli challenge
+         | Error r -> Lwt.return_error r)
+      (Ok ()) domains >>= fun () ->
+      new_cert cli >>= fun pem ->
+      Lwt.return_ok pem
 end
