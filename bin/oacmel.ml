@@ -8,7 +8,6 @@ let dns_out ip cs =
   let bl = Cstruct.len cs in
   Lwt_unix.sendto out (Cstruct.to_bytes cs) 0 bl [] server >>= fun n ->
   (* TODO should listen for a reply from NS, report potential errors and retransmit if UDP frame got lost *)
-  Lwt_unix.sleep 2. >>= fun () ->
   if n = bl then Lwt.return_ok () else Lwt.return_error "couldn't send nsupdate"
 
 let sleep () = Lwt_unix.sleep 5.
