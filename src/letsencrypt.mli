@@ -20,17 +20,22 @@ val letsencrypt_staging_url : Uri.t
     for challenges combination, no nothing.
  *)
 module Client: sig
+  type t
 
   type solver_t
   val default_http_solver : solver_t
   val default_dns_solver : Ptime.t -> (Cstruct.t -> (unit, string) result Lwt.t) -> Dns_name.t -> Dns_packet.dnskey -> solver_t
 
   module Make (Client : Cohttp_lwt.S.Client) : sig
-    val get_crt :
-      ?ctx:Client.ctx ->
-      ?directory:Uri.t -> ?solver:solver_t ->
-      (unit -> unit Lwt.t) -> Nocrypto.Rsa.priv -> X509.CA.signing_request ->
-      (string, string) Result.result Lwt.t
+  val initialise : ?ctx:Client.ctx ->
+    ?directory:Uri.t -> Nocrypto.Rsa.priv ->
+    (t, string) Result.result Lwt.t
+
+
+  val sign_certificate : ?ctx:Client.ctx ->
+    ?solver:solver_t -> t -> (unit -> unit Lwt.t) ->
+    X509.CA.signing_request ->
+    (string, string) Result.result Lwt.t
       (** [get_crt ~directory_url ~solver sleep rsa_pem csr_pem] asks the CA identified at url
           [directory] for signing [csr_pem] with account key [account_pem] for all
           domains in [csr_pem].  This functions accepts an optionl argument

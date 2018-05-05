@@ -1,4 +1,4 @@
-open Lwt
+open Lwt.Infix
 
 module Acme_cli = Acme_client.Make(Cohttp_lwt_unix.Client)
 
@@ -15,6 +15,11 @@ let sleep () = Lwt_unix.sleep 5.
 let err_to_msg = function
   | Ok a -> Ok a
   | Error e -> Error (`Msg e)
+
+let doit endpoint account_key solver sleep csr =
+  Acme_cli.initialise ~directory:(Uri.of_string endpoint) account_key >>= function
+  | Ok t -> Acme_cli.sign_certificate ~solver t sleep csr
+  | Error e -> Lwt.return_error e
 
 let main _ rsa_pem csr_pem acme_dir ip key endpoint cert =
   let open Rresult.R.Infix in
@@ -35,7 +40,7 @@ let main _ rsa_pem csr_pem acme_dir ip key endpoint cert =
           err_to_msg (Primitives.csr_of_pem csr_pem) >>= fun request ->
           let now = Ptime_clock.now () in
           let solver = Acme_client.default_dns_solver now (dns_out ip) name key in
-          match Lwt_main.run (Acme_cli.get_crt ~directory:(Uri.of_string endpoint) ~solver sleep account_key request) with
+          match Lwt_main.run (doit endpoint account_key solver sleep request) with
           | Error e -> Error (`Msg e)
           | Ok pem ->
             Logs.info (fun m -> m "Certificate downloaded");

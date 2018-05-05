@@ -6,7 +6,6 @@ module Pem = X509.Encoding.Pem
 
 type t = {
   account_key : Nocrypto.Rsa.priv ;
-  csr :  X509.CA.signing_request ;
   mutable next_nonce : string ;
   d : directory_t ;
 }
@@ -168,11 +167,6 @@ let discover ?ctx directory =
   in
   Ok (nonce, directory_t)
 
-let new_cli ?ctx directory account_key csr =
-  discover ?ctx directory >>= function
-  | Error e -> Lwt.return_error e
-  | Ok (next_nonce, d)  -> Lwt.return_ok { account_key ; csr ; next_nonce ; d }
-
 let http_post_jws ?ctx cli data url =
   let prepare_post key nonce data =
     let body = Jws.encode key data nonce in
@@ -316,9 +310,9 @@ let der_to_pem der =
   | Some crt -> Ok (Pem.Certificate.to_pem_cstruct [crt] |> Cstruct.to_string)
   | None -> Error "I got gibberish while trying to decode the new certificate."
 
-let new_cert ?ctx cli =
+let new_cert ?ctx cli csr =
   let url = cli.d.new_cert in
-  let der = X509.Encoding.cs_of_signing_request cli.csr |> Cstruct.to_string |> B64u.urlencode in
+  let der = X509.Encoding.cs_of_signing_request csr |> Cstruct.to_string |> B64u.urlencode in
   let data = Printf.sprintf {|{"resource": "new-cert", "csr": "%s"}|} der in
   http_post_jws ?ctx cli data url >|= function
   | Error e -> Error e
@@ -327,34 +321,37 @@ let new_cert ?ctx cli =
     | 201 -> der_to_pem body
     | _ -> error_in "new-cert" code body
 
-let get_crt ?ctx ?(directory = letsencrypt_url) ?(solver = default_http_solver) sleep key csr =
+let sign_certificate ?ctx ?(solver = default_http_solver) cli sleep csr =
+  let open Lwt_result.Infix in
+  (* for all domains, ask the ACME server for a certificate *)
+  let domains = domains_of_csr csr in
+  Lwt_list.fold_left_s
+    (fun r domain ->
+       match r with
+       | Ok () ->
+         new_authz ?ctx cli domain solver.get_challenge >>= fun challenge ->
+         solver.solve_challenge cli challenge domain >>= fun () ->
+         challenge_met ?ctx cli solver.name challenge >>= fun () ->
+         poll_until ?ctx sleep cli challenge
+       | Error r -> Lwt.return_error r)
+    (Ok ()) domains >>= fun () ->
+  new_cert ?ctx cli csr >>= fun pem ->
+  Lwt.return_ok pem
+
+let initialise ?ctx ?(directory = letsencrypt_url) account_key =
   let open Lwt_result.Infix in
   (* create a new client *)
-  new_cli ?ctx directory key csr >>= fun cli ->
+  discover ?ctx directory >>= fun (next_nonce, d) ->
+  let cli = { next_nonce ; d ; account_key } in
 
   (* if the client didn't register, then register. Otherwise proceed *)
-  new_reg ?ctx cli >>= (function
+  new_reg ?ctx cli >>= function
       | Some (terms_link, accept_url) ->
         let terms = terms_link.Cohttp.Link.target in
         Logs.info (fun f -> f "Accepting terms at %s\n" (Uri.to_string terms));
-        accept_terms ?ctx cli ~url:accept_url ~terms
+        accept_terms ?ctx cli ~url:accept_url ~terms >>= fun () ->
+        Lwt.return_ok cli
       | None ->
         Logs.info (fun f -> f "No ToS.");
-        Lwt.return_ok ())
-    >>= fun () ->
-
-    (* for all domains, ask the ACME server for a certificate *)
-    let domains = domains_of_csr csr in
-    Lwt_list.fold_left_s
-      (fun r domain ->
-         match r with
-         | Ok () ->
-           new_authz ?ctx cli domain solver.get_challenge >>= fun challenge ->
-           solver.solve_challenge cli challenge domain >>= fun () ->
-           challenge_met ?ctx cli solver.name challenge >>= fun () ->
-           poll_until ?ctx sleep cli challenge
-         | Error r -> Lwt.return_error r)
-      (Ok ()) domains >>= fun () ->
-      new_cert ?ctx cli >>= fun pem ->
-      Lwt.return_ok pem
+        Lwt.return_ok cli
 end
