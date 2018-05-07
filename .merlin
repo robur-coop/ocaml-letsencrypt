@@ -1,4 +1,6 @@
 S src
+S app
+S mirage
 
 B _build/**
 
@@ -22,3 +24,7 @@ PKG rresult
 PKG bos
 PKG fpath
 PKG ptime
+PKG mirage-types-lwt
+PKG mirage-conduit
+PKG cohttp-mirage
+PKG hex

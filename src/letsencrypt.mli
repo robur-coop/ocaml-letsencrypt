@@ -35,7 +35,7 @@ module Client: sig
   val sign_certificate : ?ctx:Client.ctx ->
     ?solver:solver_t -> t -> (unit -> unit Lwt.t) ->
     X509.CA.signing_request ->
-    (string, string) Result.result Lwt.t
+    (X509.t, string) Result.result Lwt.t
       (** [get_crt ~directory_url ~solver sleep rsa_pem csr_pem] asks the CA identified at url
           [directory] for signing [csr_pem] with account key [account_pem] for all
           domains in [csr_pem].  This functions accepts an optionl argument

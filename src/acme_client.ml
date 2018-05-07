@@ -304,10 +304,10 @@ let rec poll_until ?ctx sleep cli challenge =
     sleep () >>= fun () ->
     poll_until ?ctx sleep cli challenge
 
-let der_to_pem der =
+let body_to_certificate der =
   let der = Cstruct.of_string der in
   match X509.Encoding.parse der with
-  | Some crt -> Ok (Pem.Certificate.to_pem_cstruct [crt] |> Cstruct.to_string)
+  | Some crt -> Ok crt
   | None -> Error "I got gibberish while trying to decode the new certificate."
 
 let new_cert ?ctx cli csr =
@@ -318,7 +318,7 @@ let new_cert ?ctx cli csr =
   | Error e -> Error e
   | Ok (code, headers, body) ->
     match code with
-    | 201 -> der_to_pem body
+    | 201 -> body_to_certificate body
     | _ -> error_in "new-cert" code body
 
 let sign_certificate ?ctx ?(solver = default_http_solver) cli sleep csr =

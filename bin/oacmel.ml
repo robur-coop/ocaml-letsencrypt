@@ -42,9 +42,9 @@ let main _ rsa_pem csr_pem acme_dir ip key endpoint cert =
           let solver = Acme_client.default_dns_solver now (dns_out ip) name key in
           match Lwt_main.run (doit endpoint account_key solver sleep request) with
           | Error e -> Error (`Msg e)
-          | Ok pem ->
+          | Ok t ->
             Logs.info (fun m -> m "Certificate downloaded");
-            Bos.OS.File.write cert pem
+            Bos.OS.File.write cert (Cstruct.to_string @@ X509.Encoding.Pem.Certificate.to_pem_cstruct1 t)
   in
   match r with
   | Ok _ -> `Ok ()
