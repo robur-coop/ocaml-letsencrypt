@@ -101,7 +101,7 @@ let dns_solver writef =
     solve_challenge = solve_dns01_challenge
   }
 
-let default_dns_solver now out keyname key =
+let default_dns_solver ?proto now out ?recv keyname key =
   let nsupdate host record =
     let name = Dns_name.prepend_exn ~hostname:false (Dns_name.of_string_exn host) "_acme-challenge" in
     let nsupdate =
@@ -121,16 +121,24 @@ let default_dns_solver now out keyname key =
                    recursion_available = false ; authentic_data = false ; checking_disabled = false ;
                    rcode = Dns_enum.NoError }
     in
-    let b, _ = Dns_packet.encode `Udp (header, `Update nsupdate) in
-    match Dns_packet.dnskey_to_tsig_algo key with
-    | None -> Lwt.return_error "cannot discover tsig algorithm of key"
-    | Some algorithm ->
-      match Dns_packet.tsig ~algorithm ~signed:now () with
-      | None -> Lwt.return_error "couldn't create tsig"
-      | Some tsig ->
-        match Dns_tsig.sign keyname ~key tsig b with
-        | None -> Lwt.return_error "key is not good"
-        | Some (b, _) -> out b
+    match Dns_tsig.encode_and_sign ?proto (header, `Update nsupdate) now key keyname with
+    | Error msg -> Lwt.return_error msg
+    | Ok (data, mac) ->
+      out data >>= function
+      | Error e -> Lwt.return_error e
+      | Ok () ->
+        match recv with
+        | None -> Lwt.return_ok ()
+        | Some recv -> recv () >|= function
+          | Error e -> Error e
+          | Ok data ->
+            match Dns_tsig.decode_and_verify now key keyname ~mac data with
+            | Error e -> Error e
+            | Ok ((header, _), _) ->
+              if header.Dns_packet.rcode = Dns_enum.NoError then
+                Ok ()
+              else
+                Error ("expected noerror, got " ^ Dns_enum.rcode_to_string header.Dns_packet.rcode)
   in
   dns_solver nsupdate
 
