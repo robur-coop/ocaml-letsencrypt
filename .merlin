@@ -28,3 +28,5 @@ PKG mirage-types-lwt
 PKG mirage-conduit
 PKG cohttp-mirage
 PKG hex
+PKG randomconv
+PKG nocrypto.unix

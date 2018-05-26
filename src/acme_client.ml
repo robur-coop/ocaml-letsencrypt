@@ -101,7 +101,7 @@ let dns_solver writef =
     solve_challenge = solve_dns01_challenge
   }
 
-let default_dns_solver ?proto now out ?recv keyname key =
+let default_dns_solver ?proto id now out ?recv keyname key =
   let nsupdate host record =
     let name = Dns_name.prepend_exn ~hostname:false (Dns_name.of_string_exn host) "_acme-challenge" in
     let nsupdate =
@@ -116,7 +116,7 @@ let default_dns_solver ?proto now out ?recv keyname key =
       ]
       in
       { Dns_packet.zone ; prereq = [] ; update ; addition = [] }
-    and header = { Dns_packet.id = 0xDEAD ; query = true ; operation = Dns_enum.Update ;
+    and header = { Dns_packet.id ; query = true ; operation = Dns_enum.Update ;
                    authoritative = false ; truncation = false ; recursion_desired = false ;
                    recursion_available = false ; authentic_data = false ; checking_disabled = false ;
                    rcode = Dns_enum.NoError }

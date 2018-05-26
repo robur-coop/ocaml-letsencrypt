@@ -33,6 +33,7 @@ depends: [
     "ptime"
     "bos"
     "fpath"
+    "randomconv"
 ]
 
 build-test: [

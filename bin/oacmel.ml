@@ -39,7 +39,9 @@ let main _ rsa_pem csr_pem acme_dir ip key endpoint cert =
           err_to_msg (Primitives.priv_of_pem rsa_pem) >>= fun account_key ->
           err_to_msg (Primitives.csr_of_pem csr_pem) >>= fun request ->
           let now = Ptime_clock.now () in
-          let solver = Acme_client.default_dns_solver now (dns_out ip) name key in
+          Nocrypto_entropy_unix.initialize () ;
+          let random_id = Randomconv.int16 Nocrypto.Rng.generate in
+          let solver = Acme_client.default_dns_solver random_id now (dns_out ip) name key in
           match Lwt_main.run (doit endpoint account_key solver sleep request) with
           | Error e -> Error (`Msg e)
           | Ok t ->

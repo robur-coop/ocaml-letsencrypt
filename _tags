@@ -5,7 +5,7 @@ true: package(cohttp yojson lwt cohttp-lwt base64 nocrypto zarith logs astring r
 <src/acme_client.{ml,mli}>: package(udns udns.crypto)
 "src": include
 
-<bin/oacmel.{ml,native,byte}>: package(cmdliner fmt.cli logs.cli fmt.tty nocrypto.lwt udns udns.crypto x509 cohttp-lwt-unix logs.fmt bos fpath ptime.clock.os lwt.unix)
+<bin/oacmel.{ml,native,byte}>: package(cmdliner fmt.cli logs.cli fmt.tty nocrypto.unix nocrypto.lwt udns udns.crypto x509 cohttp-lwt-unix logs.fmt bos fpath ptime.clock.os lwt.unix randomconv)
 <bin/acme_server.{ml,native,byte}>: package(dispatch)
 
 <test/*>: package(oUnit nocrypto.unix x509)
