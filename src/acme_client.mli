@@ -12,7 +12,7 @@ val default_dns_solver :
   ?proto:Dns_packet.proto -> int -> Ptime.t ->
   (Cstruct.t -> (unit, string) result Lwt.t) ->
   ?recv:(unit -> (Cstruct.t, string) result Lwt.t) ->
-  Dns_name.t -> Dns_packet.dnskey -> solver_t
+  Domain_name.t -> Dns_packet.dnskey -> solver_t
 val default_http_solver : solver_t
 
 module Make (Client : Cohttp_lwt.S.Client) : sig

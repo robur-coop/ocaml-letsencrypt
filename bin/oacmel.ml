@@ -32,7 +32,7 @@ let main _ rsa_pem csr_pem acme_dir ip key endpoint cert =
     | false ->
       match Astring.String.cut ~sep:":" key with
       | None -> Error (`Msg "couldn't parse key")
-      | Some (name, key) -> match Dns_name.of_string ~hostname:false name, Dns_packet.dnskey_of_string key with
+      | Some (name, key) -> match Domain_name.of_string ~hostname:false name, Dns_packet.dnskey_of_string key with
         | _, None | Error _, _ -> Error (`Msg "no key")
         | Ok name, Some key ->
           (try Ok (Unix.inet_addr_of_string ip) with Failure e -> Error (`Msg e)) >>= fun ip ->

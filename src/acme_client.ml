@@ -103,12 +103,9 @@ let dns_solver writef =
 
 let default_dns_solver ?proto id now out ?recv keyname key =
   let nsupdate host record =
-    let name = Dns_name.prepend_exn ~hostname:false (Dns_name.of_string_exn host) "_acme-challenge" in
+    let name = Domain_name.prepend_exn ~hostname:false (Domain_name.of_string_exn host) "_acme-challenge" in
     let nsupdate =
-      let q_name =
-        let a = Dns_name.to_array keyname in
-        Dns_name.of_array (Array.sub a 0 (Array.length a - 2))
-      in
+      let q_name = Domain_name.drop_labels_exn ~amount:2 keyname in
       let zone = { Dns_packet.q_name ; q_type = Dns_enum.SOA }
       and update = [
         Dns_packet.Remove (name, Dns_enum.TXT) ;
@@ -121,7 +118,7 @@ let default_dns_solver ?proto id now out ?recv keyname key =
                    recursion_available = false ; authentic_data = false ; checking_disabled = false ;
                    rcode = Dns_enum.NoError }
     in
-    match Dns_tsig.encode_and_sign ?proto (header, `Update nsupdate) now key keyname with
+    match Dns_tsig.encode_and_sign ?proto header (`Update nsupdate) now key keyname with
     | Error msg -> Lwt.return_error msg
     | Ok (data, mac) ->
       out data >>= function
@@ -134,11 +131,12 @@ let default_dns_solver ?proto id now out ?recv keyname key =
           | Ok data ->
             match Dns_tsig.decode_and_verify now key keyname ~mac data with
             | Error e -> Error e
-            | Ok ((header, _), _) ->
+            | Ok ((header, _, _, _), _) ->
               if header.Dns_packet.rcode = Dns_enum.NoError then
                 Ok ()
               else
-                Error ("expected noerror, got " ^ Dns_enum.rcode_to_string header.Dns_packet.rcode)
+                Error ("expected noerror reply, got " ^
+                       Fmt.to_to_string Dns_enum.pp_rcode header.Dns_packet.rcode)
   in
   dns_solver nsupdate
 
