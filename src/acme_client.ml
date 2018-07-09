@@ -25,6 +25,13 @@ let error_in endpoint code body =
   let body = String.escaped body in
   Error (Printf.sprintf "Error at %s: code %d - body: %s" endpoint code body)
 
+let bad_nonce body =
+  match Json.of_string body with
+  | Error _ -> false
+  | Ok json -> match Json.string_member "type" json with
+    | Error _ -> false
+    | Ok x -> String.equal x "urn:acme:error:badNonce"
+
 let extract_nonce headers =
   match Cohttp.Header.get headers "Replay-Nonce" with
   | Some nonce -> Ok nonce
@@ -173,7 +180,7 @@ let discover ?ctx directory =
   in
   Ok (nonce, directory_t)
 
-let http_post_jws ?ctx cli data url =
+let rec http_post_jws ?ctx cli data url =
   let prepare_post key nonce data =
     let body = Jws.encode key data nonce in
     let body_len = string_of_int (String.length body) in
@@ -197,7 +204,11 @@ let http_post_jws ?ctx cli data url =
   | Ok next_nonce ->
     (* XXX: is this like cheating? *)
     cli.next_nonce <- next_nonce;
-    Lwt.return_ok (code, headers, body)
+    match code with
+    | 400 when bad_nonce body ->
+      Logs.warn (fun m -> m "received bad nonce (and a fresh nonce), retrying same request");
+      http_post_jws ?ctx cli data url
+    | _ -> Lwt.return_ok (code, headers, body)
 
 let get_terms_of_service links =
   try Some (List.find
@@ -293,6 +304,9 @@ let challenge_met ?ctx cli ct challenge =
 
 let poll_challenge_status ?ctx cli challenge =
   http_get ?ctx challenge.url >|= fun (code, headers, body) ->
+  (match extract_nonce headers with
+   | Error _ -> ()
+   | Ok nonce -> cli.next_nonce <- nonce) ;
   let open Rresult.R.Infix in
   Json.of_string body >>= fun challenge_status ->
   match Json.string_member "status" challenge_status with
