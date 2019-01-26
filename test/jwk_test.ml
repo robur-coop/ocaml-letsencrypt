@@ -7,10 +7,10 @@ let n64 =
   "MicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyr" ^
   "dkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF4" ^
   "4-csFCur-kEgU8awapJzKnqDKgw"
-let n = B64u.urldecodez n64
+let n = match B64u.urldecodez n64 with Error e -> invalid_arg e | Ok n -> n
 
 let e64 = "AQAB"
-let e = B64u.urldecodez e64
+let e = match B64u.urldecodez e64 with Error e -> invalid_arg e | Ok e -> e
 
 let pub_key = `Rsa (Primitives.pub_of_z ~e ~n)
 
@@ -29,8 +29,8 @@ let decode_example =
   let maybe_pub = Printf.sprintf {|{"e":"%s","kty":"RSA","n":"%s"}|} e64 n64
                   |> Jwk.decode in
   match maybe_pub with
-  | `Rsa pub -> pub
-  | `Null -> assert_failure "Error decoding."
+  | Ok (`Rsa pub) -> pub
+  | Error e -> assert_failure e
 
 let test_decode text_ctx =
   let pub = decode_example in
@@ -38,24 +38,25 @@ let test_decode text_ctx =
 
 let test_decode_badformed test_ctx =
   let s = "{" in
-  assert_equal (Jwk.decode s) `Null
+  assert_equal (Jwk.decode s) (Error "Line 1, bytes 0-1:\nUnexpected end of input")
 
 let test_decode_invalid_n test_ctx =
   let s = {|{"kty": "RSA", "e": "AQAB"}|} in
-  assert_equal (Jwk.decode s) `Null
+  assert_equal (Jwk.decode s) (Error {|couldn't find string n in {"kty":"RSA","e":"AQAB"}|})
 
 let test_decode_invalid_e test_ctx =
   let s = {|{"kty": "RSA", "e": 1}|} in
-  assert_equal (Jwk.decode s) `Null
+  assert_equal (Jwk.decode s) (Error {|couldn't find string e in {"kty":"RSA","e":1}|})
 
 let test_decode_invalid_kty test_ctx =
   let s = {|{"kty": "invalid"}|} in
-  assert_equal (Jwk.decode s) `Null
+  assert_equal (Jwk.decode s) (Error "unknown key type invalid")
 
 let all_tests = [
   "test_encode" >:: test_encode;
   "test_thumbprint" >:: test_thumbprint;
   "test_decode" >:: test_decode;
+  "test_decode_badformed" >:: test_decode_badformed;
   "test_decode_invalid_kty" >:: test_decode_invalid_kty;
   "test_decode_invalid_e" >:: test_decode_invalid_e;
   "test_decode_invalid_n" >:: test_decode_invalid_n;

@@ -1,4 +1,6 @@
 S src
+S app
+S mirage
 
 B _build/**
 
@@ -14,3 +16,17 @@ PKG x509
 PKG yojson
 PKG zarith
 PKG cohttp-lwt-unix
+PKG udns
+PKG cohttp
+PKG cohttp-lwt
+PKG astring
+PKG rresult
+PKG bos
+PKG fpath
+PKG ptime
+PKG mirage-types-lwt
+PKG mirage-conduit
+PKG cohttp-mirage
+PKG hex
+PKG randomconv
+PKG nocrypto.unix

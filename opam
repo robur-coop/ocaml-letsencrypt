@@ -14,11 +14,13 @@ depends: [
     "ocamlfind" {build}
     "ocamlbuild" {build}
     "topkg" {build}
+    "astring"
+    "rresult"
     "base64"
     "cmdliner"
     "cohttp"
     "cohttp-lwt"
-    "cohttp-lwt-unix"
+    "cohttp-lwt-unix" {>= "1.0.0"}
     "zarith"
     "logs"
     "fmt"
@@ -27,6 +29,11 @@ depends: [
     "x509"
     "yojson"
     "ounit" {test}
+    "udns"
+    "ptime"
+    "bos"
+    "fpath"
+    "randomconv"
 ]
 
 build-test: [

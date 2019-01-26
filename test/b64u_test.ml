@@ -2,10 +2,12 @@ open OUnit2
 
 let test_decodez_216p1 test_ctx =
   let e64 = "AQAB" in
-  let e = B64u.urldecodez e64 in
-  let got = Z.format "%x" e in
-  let expected = "10001" in
-  assert_equal got expected
+  match B64u.urldecodez e64 with
+  | Error e -> assert_failure e
+  | Ok e ->
+    let got = Z.format "%x" e in
+    let expected = "10001" in
+    assert_equal got expected
 
 let test_encodez_216p1 test_ctx =
   let e = Z.of_int 65537 in
