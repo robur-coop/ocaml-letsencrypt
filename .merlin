@@ -1,6 +1,5 @@
 S src
 S app
-S mirage
 
 B _build/**
 
