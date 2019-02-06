@@ -25,20 +25,20 @@ module Client: sig
   type solver_t
   val default_http_solver : solver_t
   val default_dns_solver : ?proto:Dns_packet.proto -> int -> Ptime.t ->
-    (Cstruct.t -> (unit, string) result Lwt.t) ->
-    ?recv:(unit -> (Cstruct.t, string) result Lwt.t) ->
+    (Cstruct.t -> (unit, [ `Msg of string ]) result Lwt.t) ->
+    ?recv:(unit -> (Cstruct.t, [ `Msg of string ]) result Lwt.t) ->
     Domain_name.t -> Dns_packet.dnskey -> solver_t
 
   module Make (Client : Cohttp_lwt.S.Client) : sig
   val initialise : ?ctx:Client.ctx ->
     ?directory:Uri.t -> Nocrypto.Rsa.priv ->
-    (t, string) Result.result Lwt.t
+    (t, [ `Msg of string ]) result Lwt.t
 
 
   val sign_certificate : ?ctx:Client.ctx ->
     ?solver:solver_t -> t -> (unit -> unit Lwt.t) ->
     X509.CA.signing_request ->
-    (X509.t, string) Result.result Lwt.t
+    (X509.t, [ `Msg of string ]) result Lwt.t
       (** [get_crt ~directory_url ~solver sleep rsa_pem csr_pem] asks the CA identified at url
           [directory] for signing [csr_pem] with account key [account_pem] for all
           domains in [csr_pem].  This functions accepts an optionl argument
@@ -46,7 +46,5 @@ module Client: sig
           result is either a string result cotaining the pem-encoded signed
           certificate, or an error with a string describing what went wrong. *)
   end
-
-
 
 end

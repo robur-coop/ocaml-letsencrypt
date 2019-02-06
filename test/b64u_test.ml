@@ -3,7 +3,7 @@ open OUnit2
 let test_decodez_216p1 test_ctx =
   let e64 = "AQAB" in
   match B64u.urldecodez e64 with
-  | Error e -> assert_failure e
+  | Error (`Msg e) -> assert_failure e
   | Ok e ->
     let got = Z.format "%x" e in
     let expected = "10001" in

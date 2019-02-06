@@ -17,7 +17,7 @@ depends: [
     "topkg" {build}
     "astring"
     "rresult"
-    "base64"
+    "base64" {>= "3.1.0"}
     "cmdliner"
     "cohttp"
     "cohttp-lwt"
@@ -28,7 +28,7 @@ depends: [
     "lwt" {>= "2.6.0"}
     "nocrypto"
     "x509"
-    "yojson"
+    "yojson" {>= "1.6.0"}
     "ounit" {test}
     "udns"
     "ptime"

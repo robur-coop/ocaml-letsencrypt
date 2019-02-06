@@ -44,7 +44,7 @@ let decode ?pub data =
   (match pub, header.jwk with
    | Some pub, _ -> Ok pub
    | None, Some pub -> Ok pub
-   | None, None -> Error "no public key found") >>= fun pub ->
+   | None, None -> Error (`Msg "no public key found")) >>= fun pub ->
   let verify m s =
     match header.alg, pub with
     | "RS256", `Rsa pub -> Primitives.rs256_verify pub m s
@@ -54,4 +54,4 @@ let decode ?pub data =
   if verify m signature then
     Ok (header, payload)
   else
-    Error "signature verification failed"
+    Error (`Msg "signature verification failed")

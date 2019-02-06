@@ -17,13 +17,13 @@ type challenge_t = {
 
 type solver_t = {
   name : string ;
-  get_challenge : Json.t -> (challenge_t, string) Result.result ;
-  solve_challenge : t -> challenge_t -> string -> (unit, string) Result.result Lwt.t ;
+  get_challenge : Json.t -> (challenge_t, [ `Msg of string ]) Result.result ;
+  solve_challenge : t -> challenge_t -> string -> (unit, [ `Msg of string ]) Result.result Lwt.t ;
 }
 
 let error_in endpoint code body =
   let body = String.escaped body in
-  Error (Printf.sprintf "Error at %s: code %d - body: %s" endpoint code body)
+  Error (`Msg (Printf.sprintf "Error at %s: code %d - body: %s" endpoint code body))
 
 let bad_nonce body =
   match Json.of_string body with
@@ -35,7 +35,7 @@ let bad_nonce body =
 let extract_nonce headers =
   match Cohttp.Header.get headers "Replay-Nonce" with
   | Some nonce -> Ok nonce
-  | None -> Error "Error: I could not fetch a new nonce."
+  | None -> Error (`Msg "Error: I could not fetch a new nonce.")
 
 (*
    XXX. probably the structure of challenges different from http-01 and
@@ -47,7 +47,7 @@ let get_challenge challenge_filter authorization =
   let open Rresult.R.Infix in
   Json.list_member "challenges" authorization >>= fun challenges ->
   match List.filter challenge_filter challenges with
-  | [] -> Error "No supported challenges found."
+  | [] -> Error (`Msg "No supported challenges found.")
   | challenge :: cs ->
     Logs.debug (fun m -> m "got %d challenges, using the head"
                    (succ (List.length cs))) ;
@@ -126,7 +126,7 @@ let default_dns_solver ?proto id now out ?recv keyname key =
                    rcode = Dns_enum.NoError }
     in
     match Dns_tsig.encode_and_sign ?proto header (`Update nsupdate) now key keyname with
-    | Error msg -> Lwt.return_error msg
+    | Error msg -> Lwt.return_error (`Msg msg)
     | Ok (data, mac) ->
       out data >>= function
       | Error e -> Lwt.return_error e
@@ -137,13 +137,13 @@ let default_dns_solver ?proto id now out ?recv keyname key =
           | Error e -> Error e
           | Ok data ->
             match Dns_tsig.decode_and_verify now key keyname ~mac data with
-            | Error e -> Error e
+            | Error e -> Error (`Msg e)
             | Ok ((header, _, _, _), _) ->
               if header.Dns_packet.rcode = Dns_enum.NoError then
                 Ok ()
               else
-                Error ("expected noerror reply, got " ^
-                       Fmt.to_to_string Dns_enum.pp_rcode header.Dns_packet.rcode)
+                Error (`Msg ("expected noerror reply, got " ^
+                             Fmt.to_to_string Dns_enum.pp_rcode header.Dns_packet.rcode))
   in
   dns_solver nsupdate
 
@@ -232,7 +232,7 @@ let new_reg ?ctx cli =
             | Some terms ->
               Logs.info (fun m -> m "Must accept terms.");
               Ok (Some (terms, accept_url))
-            | None -> Error "Accept url without terms-of-service"
+            | None -> Error (`Msg "Accept url without terms-of-service")
           end
         | None ->
           Logs.info (fun m -> m "Account created.");
@@ -328,7 +328,7 @@ let body_to_certificate der =
   let der = Cstruct.of_string der in
   match X509.Encoding.parse der with
   | Some crt -> Ok crt
-  | None -> Error "I got gibberish while trying to decode the new certificate."
+  | None -> Error (`Msg "I got gibberish while trying to decode the new certificate.")
 
 let new_cert ?ctx cli csr =
   let url = cli.d.new_cert in
