@@ -113,19 +113,19 @@ let default_dns_solver ?proto id now out ?recv keyname key =
     let name = Domain_name.prepend_exn ~hostname:false (Domain_name.of_string_exn host) "_acme-challenge" in
     let nsupdate =
       let q_name = Domain_name.drop_labels_exn ~amount:2 keyname in
-      let zone = { Dns_packet.q_name ; q_type = Dns_enum.SOA }
+      let zone = { Udns_packet.q_name ; q_type = Udns_enum.SOA }
       and update = [
-        Dns_packet.Remove (name, Dns_enum.TXT) ;
-        Dns_packet.Add ({ Dns_packet.name ; ttl = 3600l ; rdata = Dns_packet.TXT [ record ] })
+        Udns_packet.Remove (name, Udns_enum.TXT) ;
+        Udns_packet.Add ({ Udns_packet.name ; ttl = 3600l ; rdata = Udns_packet.TXT [ record ] })
       ]
       in
-      { Dns_packet.zone ; prereq = [] ; update ; addition = [] }
-    and header = { Dns_packet.id ; query = true ; operation = Dns_enum.Update ;
+      { Udns_packet.zone ; prereq = [] ; update ; addition = [] }
+    and header = { Udns_packet.id ; query = true ; operation = Udns_enum.Update ;
                    authoritative = false ; truncation = false ; recursion_desired = false ;
                    recursion_available = false ; authentic_data = false ; checking_disabled = false ;
-                   rcode = Dns_enum.NoError }
+                   rcode = Udns_enum.NoError }
     in
-    match Dns_tsig.encode_and_sign ?proto header (`Update nsupdate) now key keyname with
+    match Udns_tsig.encode_and_sign ?proto header (`Update nsupdate) now key keyname with
     | Error msg -> Lwt.return_error (`Msg msg)
     | Ok (data, mac) ->
       out data >>= function
@@ -136,14 +136,14 @@ let default_dns_solver ?proto id now out ?recv keyname key =
         | Some recv -> recv () >|= function
           | Error e -> Error e
           | Ok data ->
-            match Dns_tsig.decode_and_verify now key keyname ~mac data with
+            match Udns_tsig.decode_and_verify now key keyname ~mac data with
             | Error e -> Error (`Msg e)
             | Ok ((header, _, _, _), _) ->
-              if header.Dns_packet.rcode = Dns_enum.NoError then
+              if header.Udns_packet.rcode = Udns_enum.NoError then
                 Ok ()
               else
                 Error (`Msg ("expected noerror reply, got " ^
-                             Fmt.to_to_string Dns_enum.pp_rcode header.Dns_packet.rcode))
+                             Fmt.to_to_string Udns_enum.pp_rcode header.Udns_packet.rcode))
   in
   dns_solver nsupdate
 
