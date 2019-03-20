@@ -69,7 +69,7 @@ let jws_encode_somedata () =
   | Error (`Msg e) -> assert_failure e
 
 
-let test_member member expected test_ctx =
+let test_member member expected _ctx =
   let jws = jws_encode_somedata () in
   match Json.string_member member jws with
   | Ok protected -> assert_equal protected expected
@@ -79,7 +79,7 @@ let test_encode_protected = test_member "protected" expected_protected
 let test_encode_payload = test_member "payload" expected_payload
 let test_encode_signature = test_member "signature" expected_signature
 
-let test_decode_null test_ctx =
+let test_decode_null _ctx =
   assert_equal (Jws.decode "{}") (Error (`Msg "couldn't find string protected in {}"))
 
 let jws_decode_somedata () =
@@ -88,18 +88,18 @@ let jws_decode_somedata () =
       expected_protected expected_payload expected_signature in
   Jws.decode data
 
-let test_decode_rsakey text_ctx =
+let test_decode_rsakey _ctx =
   let jws = jws_decode_somedata () in
   let key = rsa_key () in
   match jws with
   | Error (`Msg e) -> assert_failure e
-  | Ok (protected, payload) ->
+  | Ok (protected, _payload) ->
     let pub = Primitives.pub_of_priv key in
     assert_equal protected.Jws.jwk (Some (`Rsa pub))
 
 (* XXX. at this stage we probably wont the expected payload to be on some
  * global variable. *)
-let test_decode_payload text_ctx =
+let test_decode_payload _ctx =
   match jws_decode_somedata () with
   | Error (`Msg e) -> assert_failure e
   | Ok (_, payload) ->

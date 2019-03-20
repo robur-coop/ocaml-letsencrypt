@@ -21,7 +21,7 @@ let doit endpoint account_key solver sleep csr =
   | Ok t -> Acme_cli.sign_certificate ~solver t sleep csr
   | Error e -> Lwt.return_error e
 
-let main _ rsa_pem csr_pem acme_dir ip key endpoint cert =
+let main _ rsa_pem csr_pem _acme_dir ip key endpoint cert =
   let open Rresult.R.Infix in
   let r =
     let rsa_pem, csr_pem, cert = Fpath.(v rsa_pem, v csr_pem, v cert) in

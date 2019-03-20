@@ -20,11 +20,11 @@ let rs256_sign priv data =
   let data = Cstruct.of_string data in
   let h = Hash.SHA256.digest data in
   let pkcs1_digest = X509.Encoding.pkcs1_digest_info_to_cstruct (`SHA256, h) in
-  Rsa.PKCS1.sig_encode priv pkcs1_digest |> Cstruct.to_string
+  Rsa.PKCS1.sig_encode ~key:priv pkcs1_digest |> Cstruct.to_string
 
 let rs256_verify pub data signature =
   let data = Cstruct.of_string data in
-  match Rsa.PKCS1.sig_decode pub (Cstruct.of_string signature) with
+  match Rsa.PKCS1.sig_decode ~key:pub (Cstruct.of_string signature) with
   | Some pkcs1_digest ->
      begin
        match X509.Encoding.pkcs1_digest_info_of_cstruct pkcs1_digest with

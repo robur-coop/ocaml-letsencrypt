@@ -81,7 +81,7 @@ let http_solver writef =
 let default_http_solver =
   let default_writef domain file content =
     Logs.info (fun f -> f "Domain %s wants file %s content %s\n" domain file content);
-    read_line ()
+    ignore (read_line ())
   in
   http_solver default_writef
 
@@ -161,7 +161,7 @@ let http_get ?ctx url =
   Lwt.return (code, headers, body)
 
 let discover ?ctx directory =
-  http_get ?ctx directory >|= fun (code, headers, body) ->
+  http_get ?ctx directory >|= fun (_code, headers, body) ->
   let open Rresult.R.Infix in
   extract_nonce headers >>= fun nonce ->
   Json.of_string body >>= fun edir ->
@@ -252,7 +252,7 @@ let accept_terms ?ctx cli ~url ~terms =
   in
   http_post_jws ?ctx cli body url >|= function
   | Error e -> Error e
-  | Ok (code, headers, body) ->
+  | Ok (code, _headers, body) ->
     match code with
     | 202 -> Logs.info (fun m -> m "Terms accepted."); Ok ()
     | 409 -> Logs.info (fun m -> m "Already registered."); Ok ()
@@ -266,7 +266,7 @@ let new_authz ?ctx cli domain get_challenge =
   in
   http_post_jws ?ctx cli body url >|= function
   | Error e -> Error e
-  | Ok (code, headers, body) ->
+  | Ok (code, _headers, body) ->
     let open Rresult.R.Infix in
     match code with
     | 201 ->
@@ -281,7 +281,7 @@ let challenge_met ?ctx cli ct challenge =
   let thumbprint = Jwk.thumbprint (`Rsa pub) in
   let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
   (* write key_authorization *)
-  (**
+  (*
    XXX. that's weird: the standard (page 40, rev. 5) specifies only a "type" and
    a "keyAuthorization" key in order to inform the CA of the accomplished
    challenge.
@@ -336,7 +336,7 @@ let new_cert ?ctx cli csr =
   let data = Printf.sprintf {|{"resource": "new-cert", "csr": "%s"}|} der in
   http_post_jws ?ctx cli data url >|= function
   | Error e -> Error e
-  | Ok (code, headers, body) ->
+  | Ok (code, _headers, body) ->
     match code with
     | 201 -> body_to_certificate body
     | _ -> error_in "new-cert" code body
