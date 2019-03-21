@@ -17,7 +17,7 @@ val encode : Nocrypto.Rsa.priv -> string -> string -> string
 (** [encode private_key data nonce] produces the RS256, JWS-encoding of [data].
     The protected header will include the nonce [nonce]. *)
 
-val decode : ?pub:Jwk.key_t ->  string -> (jws_header_t * string, string) result
+val decode : ?pub:Jwk.key_t ->  string -> (jws_header_t * string, [ `Msg of string ]) result
 (** [decode public_key data] verifies the JWS-signature of [data] using
     [public_key] and returns a pair [(header, content)] if the signature was
     valid.  If [public_key] is not provided, then it will look for it

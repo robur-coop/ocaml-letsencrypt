@@ -1,0 +1,6 @@
+(executable
+  (name oacmel)
+  (public_name oacmel)
+  (package letsencrypt)
+  (modules oacmel)
+  (libraries letsencrypt cohttp-lwt-unix fpath bos randomconv cmdliner nocrypto.unix fmt.cli fmt.tty logs.fmt logs.cli))

@@ -1,0 +1,42 @@
+opam-version: "2.0"
+name: "letsencrypt"
+version: "0.1"
+synopsis: "ACME implementation in OCaml"
+description: "An implementation of the ACME protocol for OCaml"
+maintainer: "Michele Mu <maker@tumbolandia.net>"
+authors:
+  "Michele Mu <maker@tumbolandia.net>, Hannes Mehnert <hannes@mehnert.org>"
+license: "BSD-2-clause"
+homepage: "https://github.com/mmaker/ocaml-letsencrypt"
+bug-reports: "https://github.com/mmaker/ocaml-letsencrypt/issues"
+depends: [
+  "ocaml" {>= "4.05.0"}
+  "dune" {build}
+  "astring"
+  "rresult"
+  "base64" {>= "3.1.0"}
+  "cmdliner"
+  "cohttp"
+  "cohttp-lwt"
+  "cohttp-lwt-unix" {>= "1.0.0"}
+  "zarith"
+  "logs"
+  "fmt"
+  "lwt" {>= "2.6.0"}
+  "nocrypto"
+  "x509"
+  "yojson" {>= "1.6.0"}
+  "ounit" {with-test}
+  "udns"
+  "udns-tsig"
+  "ptime"
+  "bos"
+  "fpath"
+  "randomconv"
+]
+build: [
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+]
+dev-repo: "git+https://github.com/mmaker/ocaml-letsencrypt.git"

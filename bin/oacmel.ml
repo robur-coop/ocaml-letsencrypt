@@ -8,7 +8,7 @@ let dns_out ip cs =
   let bl = Cstruct.len cs in
   Lwt_unix.sendto out (Cstruct.to_bytes cs) 0 bl [] server >>= fun n ->
   (* TODO should listen for a reply from NS, report potential errors and retransmit if UDP frame got lost *)
-  if n = bl then Lwt.return_ok () else Lwt.return_error "couldn't send nsupdate"
+  if n = bl then Lwt.return_ok () else Lwt.return_error (`Msg "couldn't send nsupdate")
 
 let sleep () = Lwt_unix.sleep 5.
 
@@ -21,7 +21,7 @@ let doit endpoint account_key solver sleep csr =
   | Ok t -> Acme_cli.sign_certificate ~solver t sleep csr
   | Error e -> Lwt.return_error e
 
-let main _ rsa_pem csr_pem acme_dir ip key endpoint cert =
+let main _ rsa_pem csr_pem _acme_dir ip key endpoint cert =
   let open Rresult.R.Infix in
   let r =
     let rsa_pem, csr_pem, cert = Fpath.(v rsa_pem, v csr_pem, v cert) in
@@ -32,7 +32,7 @@ let main _ rsa_pem csr_pem acme_dir ip key endpoint cert =
     | false ->
       match Astring.String.cut ~sep:":" key with
       | None -> Error (`Msg "couldn't parse key")
-      | Some (name, key) -> match Domain_name.of_string ~hostname:false name, Dns_packet.dnskey_of_string key with
+      | Some (name, key) -> match Domain_name.of_string ~hostname:false name, Udns_packet.dnskey_of_string key with
         | _, None | Error _, _ -> Error (`Msg "no key")
         | Ok name, Some key ->
           (try Ok (Unix.inet_addr_of_string ip) with Failure e -> Error (`Msg e)) >>= fun ip ->
@@ -43,7 +43,7 @@ let main _ rsa_pem csr_pem acme_dir ip key endpoint cert =
           let random_id = Randomconv.int16 Nocrypto.Rng.generate in
           let solver = Acme_client.default_dns_solver random_id now (dns_out ip) name key in
           match Lwt_main.run (doit endpoint account_key solver sleep request) with
-          | Error e -> Error (`Msg e)
+          | Error e -> Error e
           | Ok t ->
             Logs.info (fun m -> m "Certificate downloaded");
             Bos.OS.File.write cert (Cstruct.to_string @@ X509.Encoding.Pem.Certificate.to_pem_cstruct1 t)

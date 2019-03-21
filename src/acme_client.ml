@@ -17,13 +17,13 @@ type challenge_t = {
 
 type solver_t = {
   name : string ;
-  get_challenge : Json.t -> (challenge_t, string) Result.result ;
-  solve_challenge : t -> challenge_t -> string -> (unit, string) Result.result Lwt.t ;
+  get_challenge : Json.t -> (challenge_t, [ `Msg of string ]) Result.result ;
+  solve_challenge : t -> challenge_t -> string -> (unit, [ `Msg of string ]) Result.result Lwt.t ;
 }
 
 let error_in endpoint code body =
   let body = String.escaped body in
-  Error (Printf.sprintf "Error at %s: code %d - body: %s" endpoint code body)
+  Error (`Msg (Printf.sprintf "Error at %s: code %d - body: %s" endpoint code body))
 
 let bad_nonce body =
   match Json.of_string body with
@@ -35,7 +35,7 @@ let bad_nonce body =
 let extract_nonce headers =
   match Cohttp.Header.get headers "Replay-Nonce" with
   | Some nonce -> Ok nonce
-  | None -> Error "Error: I could not fetch a new nonce."
+  | None -> Error (`Msg "Error: I could not fetch a new nonce.")
 
 (*
    XXX. probably the structure of challenges different from http-01 and
@@ -47,7 +47,7 @@ let get_challenge challenge_filter authorization =
   let open Rresult.R.Infix in
   Json.list_member "challenges" authorization >>= fun challenges ->
   match List.filter challenge_filter challenges with
-  | [] -> Error "No supported challenges found."
+  | [] -> Error (`Msg "No supported challenges found.")
   | challenge :: cs ->
     Logs.debug (fun m -> m "got %d challenges, using the head"
                    (succ (List.length cs))) ;
@@ -81,7 +81,7 @@ let http_solver writef =
 let default_http_solver =
   let default_writef domain file content =
     Logs.info (fun f -> f "Domain %s wants file %s content %s\n" domain file content);
-    read_line ()
+    ignore (read_line ())
   in
   http_solver default_writef
 
@@ -113,20 +113,20 @@ let default_dns_solver ?proto id now out ?recv keyname key =
     let name = Domain_name.prepend_exn ~hostname:false (Domain_name.of_string_exn host) "_acme-challenge" in
     let nsupdate =
       let q_name = Domain_name.drop_labels_exn ~amount:2 keyname in
-      let zone = { Dns_packet.q_name ; q_type = Dns_enum.SOA }
+      let zone = { Udns_packet.q_name ; q_type = Udns_enum.SOA }
       and update = [
-        Dns_packet.Remove (name, Dns_enum.TXT) ;
-        Dns_packet.Add ({ Dns_packet.name ; ttl = 3600l ; rdata = Dns_packet.TXT [ record ] })
+        Udns_packet.Remove (name, Udns_enum.TXT) ;
+        Udns_packet.Add ({ Udns_packet.name ; ttl = 3600l ; rdata = Udns_packet.TXT [ record ] })
       ]
       in
-      { Dns_packet.zone ; prereq = [] ; update ; addition = [] }
-    and header = { Dns_packet.id ; query = true ; operation = Dns_enum.Update ;
+      { Udns_packet.zone ; prereq = [] ; update ; addition = [] }
+    and header = { Udns_packet.id ; query = true ; operation = Udns_enum.Update ;
                    authoritative = false ; truncation = false ; recursion_desired = false ;
                    recursion_available = false ; authentic_data = false ; checking_disabled = false ;
-                   rcode = Dns_enum.NoError }
+                   rcode = Udns_enum.NoError }
     in
-    match Dns_tsig.encode_and_sign ?proto header (`Update nsupdate) now key keyname with
-    | Error msg -> Lwt.return_error msg
+    match Udns_tsig.encode_and_sign ?proto header (`Update nsupdate) now key keyname with
+    | Error msg -> Lwt.return_error (`Msg msg)
     | Ok (data, mac) ->
       out data >>= function
       | Error e -> Lwt.return_error e
@@ -136,14 +136,14 @@ let default_dns_solver ?proto id now out ?recv keyname key =
         | Some recv -> recv () >|= function
           | Error e -> Error e
           | Ok data ->
-            match Dns_tsig.decode_and_verify now key keyname ~mac data with
-            | Error e -> Error e
+            match Udns_tsig.decode_and_verify now key keyname ~mac data with
+            | Error e -> Error (`Msg e)
             | Ok ((header, _, _, _), _) ->
-              if header.Dns_packet.rcode = Dns_enum.NoError then
+              if header.Udns_packet.rcode = Udns_enum.NoError then
                 Ok ()
               else
-                Error ("expected noerror reply, got " ^
-                       Fmt.to_to_string Dns_enum.pp_rcode header.Dns_packet.rcode)
+                Error (`Msg ("expected noerror reply, got " ^
+                             Fmt.to_to_string Udns_enum.pp_rcode header.Udns_packet.rcode))
   in
   dns_solver nsupdate
 
@@ -161,7 +161,7 @@ let http_get ?ctx url =
   Lwt.return (code, headers, body)
 
 let discover ?ctx directory =
-  http_get ?ctx directory >|= fun (code, headers, body) ->
+  http_get ?ctx directory >|= fun (_code, headers, body) ->
   let open Rresult.R.Infix in
   extract_nonce headers >>= fun nonce ->
   Json.of_string body >>= fun edir ->
@@ -232,7 +232,7 @@ let new_reg ?ctx cli =
             | Some terms ->
               Logs.info (fun m -> m "Must accept terms.");
               Ok (Some (terms, accept_url))
-            | None -> Error "Accept url without terms-of-service"
+            | None -> Error (`Msg "Accept url without terms-of-service")
           end
         | None ->
           Logs.info (fun m -> m "Account created.");
@@ -252,7 +252,7 @@ let accept_terms ?ctx cli ~url ~terms =
   in
   http_post_jws ?ctx cli body url >|= function
   | Error e -> Error e
-  | Ok (code, headers, body) ->
+  | Ok (code, _headers, body) ->
     match code with
     | 202 -> Logs.info (fun m -> m "Terms accepted."); Ok ()
     | 409 -> Logs.info (fun m -> m "Already registered."); Ok ()
@@ -266,7 +266,7 @@ let new_authz ?ctx cli domain get_challenge =
   in
   http_post_jws ?ctx cli body url >|= function
   | Error e -> Error e
-  | Ok (code, headers, body) ->
+  | Ok (code, _headers, body) ->
     let open Rresult.R.Infix in
     match code with
     | 201 ->
@@ -281,7 +281,7 @@ let challenge_met ?ctx cli ct challenge =
   let thumbprint = Jwk.thumbprint (`Rsa pub) in
   let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
   (* write key_authorization *)
-  (**
+  (*
    XXX. that's weird: the standard (page 40, rev. 5) specifies only a "type" and
    a "keyAuthorization" key in order to inform the CA of the accomplished
    challenge.
@@ -328,7 +328,7 @@ let body_to_certificate der =
   let der = Cstruct.of_string der in
   match X509.Encoding.parse der with
   | Some crt -> Ok crt
-  | None -> Error "I got gibberish while trying to decode the new certificate."
+  | None -> Error (`Msg "I got gibberish while trying to decode the new certificate.")
 
 let new_cert ?ctx cli csr =
   let url = cli.d.new_cert in
@@ -336,7 +336,7 @@ let new_cert ?ctx cli csr =
   let data = Printf.sprintf {|{"resource": "new-cert", "csr": "%s"}|} der in
   http_post_jws ?ctx cli data url >|= function
   | Error e -> Error e
-  | Ok (code, headers, body) ->
+  | Ok (code, _headers, body) ->
     match code with
     | 201 -> body_to_certificate body
     | _ -> error_in "new-cert" code body

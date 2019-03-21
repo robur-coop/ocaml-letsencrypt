@@ -3,14 +3,14 @@ open Astring
 
 module J = Yojson.Basic
 
-type t = J.json
+type t = J.t
 
 let of_string s =
   try Ok (J.from_string s) with
-    Yojson.Json_error str -> Error str
+    Yojson.Json_error str -> Error (`Msg str)
 
 let err_msg typ name json =
-  Printf.sprintf "couldn't find %s %s in %s" typ name (J.to_string json)
+  `Msg (Printf.sprintf "couldn't find %s %s in %s" typ name (J.to_string json))
 
 let string_member member json =
   match J.Util.member member json with

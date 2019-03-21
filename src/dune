@@ -1,0 +1,5 @@
+(library
+ (name letsencrypt)
+ (public_name letsencrypt)
+ (wrapped false)
+ (libraries yojson lwt base64 nocrypto x509 uri udns udns-tsig rresult astring cohttp-lwt))

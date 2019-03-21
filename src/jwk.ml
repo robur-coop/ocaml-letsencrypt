@@ -25,7 +25,7 @@ let thumbprint pub_key =
 let decode_json json =
   Json.string_member "kty" json >>= function
   | "RSA" -> decode_rsa json
-  | x -> Error ("unknown key type " ^ x)
+  | x -> Error (`Msg ("unknown key type " ^ x))
 
 let decode data =
   Json.of_string data >>= fun json ->

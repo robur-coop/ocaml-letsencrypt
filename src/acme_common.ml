@@ -26,7 +26,7 @@ let domains_of_csr csr =
     (* XXX: I'm assuming there is always exactly one CN in a subject. *)
     info.X509.CA.subject
     |> List.find (function
-        | `CN name -> true
+        | `CN _ -> true
         | _ -> false)
     |> (function
         | `CN name -> [name]
