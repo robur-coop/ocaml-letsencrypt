@@ -17,8 +17,8 @@ type challenge_t = {
 
 type solver_t = {
   name : string ;
-  get_challenge : Json.t -> (challenge_t, [ `Msg of string ]) Result.result ;
-  solve_challenge : t -> challenge_t -> string -> (unit, [ `Msg of string ]) Result.result Lwt.t ;
+  get_challenge : Json.t -> (challenge_t, [ `Msg of string ]) result ;
+  solve_challenge : (unit -> unit Lwt.t) -> t -> challenge_t -> string -> (unit, [ `Msg of string ]) result Lwt.t ;
 }
 
 let error_in endpoint code body =
@@ -64,7 +64,7 @@ let http_solver writef =
     in
     get_challenge is_http01
   in
-  let solve_http01_challenge cli challenge domain =
+  let solve_http01_challenge _ cli challenge domain =
     let token = challenge.token in
     let pk = Primitives.pub_of_priv cli.account_key in
     let thumbprint = Jwk.thumbprint (`Rsa pk) in
@@ -94,13 +94,15 @@ let dns_solver writef =
     in
     get_challenge is_dns01
   in
-  let solve_dns01_challenge cli challenge domain =
+  let solve_dns01_challenge sleep cli challenge domain =
     let token = challenge.token in
     let pk = Primitives.pub_of_priv cli.account_key in
     let thumbprint = Jwk.thumbprint (`Rsa pk) in
     let key_authorization = Printf.sprintf "%s.%s" token thumbprint in
     let solution = Primitives.sha256 key_authorization |> B64u.urlencode in
-    writef domain solution
+    writef domain solution >>= function
+    | Ok () -> sleep () >|= fun () -> Ok ()
+    | Error e -> Lwt.return (Error e)
   in
   {
     name = name ;
@@ -108,42 +110,43 @@ let dns_solver writef =
     solve_challenge = solve_dns01_challenge
   }
 
-let default_dns_solver ?proto id now out ?recv keyname key =
+let default_dns_solver ?proto id now out ?recv ~keyname key ~zone =
+  let open Dns in
   let nsupdate host record =
     let name = Domain_name.prepend_exn ~hostname:false (Domain_name.of_string_exn host) "_acme-challenge" in
-    let nsupdate =
-      let q_name = Domain_name.drop_labels_exn ~amount:2 keyname in
-      let zone = { Udns_packet.q_name ; q_type = Udns_enum.SOA }
-      and update = [
-        Udns_packet.Remove (name, Udns_enum.TXT) ;
-        Udns_packet.Add ({ Udns_packet.name ; ttl = 3600l ; rdata = Udns_packet.TXT [ record ] })
+    let zone = Packet.Question.create zone Rr_map.Soa
+    and update =
+      let up =
+        Domain_name.Map.singleton name
+          [
+            Packet.Update.Remove (Rr_map.K Txt) ;
+            Packet.Update.Add Rr_map.(B (Txt, (3600l, Txt_set.singleton record)))
       ]
       in
-      { Udns_packet.zone ; prereq = [] ; update ; addition = [] }
-    and header = { Udns_packet.id ; query = true ; operation = Udns_enum.Update ;
-                   authoritative = false ; truncation = false ; recursion_desired = false ;
-                   recursion_available = false ; authentic_data = false ; checking_disabled = false ;
-                   rcode = Udns_enum.NoError }
+      (Domain_name.Map.empty, up)
+    and header = (id, Packet.Flags.empty)
     in
-    match Udns_tsig.encode_and_sign ?proto header (`Update nsupdate) now key keyname with
-    | Error msg -> Lwt.return_error (`Msg msg)
+    let packet = Packet.create header zone (`Update update) in
+    match Dns_tsig.encode_and_sign ?proto packet now key keyname with
+    | Error s -> Lwt.return_error (`Msg (Fmt.to_to_string Dns_tsig.pp_s s))
     | Ok (data, mac) ->
       out data >>= function
-      | Error e -> Lwt.return_error e
+      | Error err -> Lwt.return_error err
       | Ok () ->
         match recv with
         | None -> Lwt.return_ok ()
         | Some recv -> recv () >|= function
           | Error e -> Error e
           | Ok data ->
-            match Udns_tsig.decode_and_verify now key keyname ~mac data with
-            | Error e -> Error (`Msg e)
-            | Ok ((header, _, _, _), _) ->
-              if header.Udns_packet.rcode = Udns_enum.NoError then
-                Ok ()
-              else
-                Error (`Msg ("expected noerror reply, got " ^
-                             Fmt.to_to_string Udns_enum.pp_rcode header.Udns_packet.rcode))
+            match Dns_tsig.decode_and_verify now key keyname ~mac data with
+            | Error e -> Error (`Msg (Fmt.strf "decode and verify error %a" Dns_tsig.pp_e e))
+            | Ok (res, _, _) ->
+              match Packet.reply_matches_request ~request:packet res with
+              | Ok _ -> Ok ()
+              | Error mismatch ->
+                Error (`Msg (Fmt.strf "error %a expected reply to %a, got %a"
+                               Packet.pp_mismatch mismatch
+                               Packet.pp packet Packet.pp res))
   in
   dns_solver nsupdate
 
@@ -350,7 +353,7 @@ let sign_certificate ?ctx ?(solver = default_http_solver) cli sleep csr =
        match r with
        | Ok () ->
          new_authz ?ctx cli domain solver.get_challenge >>= fun challenge ->
-         solver.solve_challenge cli challenge domain >>= fun () ->
+         solver.solve_challenge sleep cli challenge domain >>= fun () ->
          challenge_met ?ctx cli solver.name challenge >>= fun () ->
          poll_until ?ctx sleep cli challenge
        | Error r -> Lwt.return_error r)
@@ -366,12 +369,12 @@ let initialise ?ctx ?(directory = letsencrypt_url) account_key =
 
   (* if the client didn't register, then register. Otherwise proceed *)
   new_reg ?ctx cli >>= function
-      | Some (terms_link, accept_url) ->
-        let terms = terms_link.Cohttp.Link.target in
-        Logs.info (fun f -> f "Accepting terms at %s\n" (Uri.to_string terms));
-        accept_terms ?ctx cli ~url:accept_url ~terms >>= fun () ->
-        Lwt.return_ok cli
-      | None ->
-        Logs.info (fun f -> f "No ToS.");
-        Lwt.return_ok cli
+  | Some (terms_link, accept_url) ->
+    let terms = terms_link.Cohttp.Link.target in
+    Logs.info (fun f -> f "Accepting terms at %s\n" (Uri.to_string terms));
+    accept_terms ?ctx cli ~url:accept_url ~terms >>= fun () ->
+    Lwt.return_ok cli
+  | None ->
+    Logs.info (fun f -> f "No ToS.");
+    Lwt.return_ok cli
 end

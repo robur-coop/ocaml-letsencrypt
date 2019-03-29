@@ -8,10 +8,10 @@ type challenge_t = private {
 }
 
 val default_dns_solver :
-  ?proto:Udns_packet.proto -> int -> Ptime.t ->
+  ?proto:Dns.proto -> int -> Ptime.t ->
   (Cstruct.t -> (unit, [ `Msg of string ]) result Lwt.t) ->
   ?recv:(unit -> (Cstruct.t, [ `Msg of string ]) result Lwt.t) ->
-  Domain_name.t -> Udns_packet.dnskey -> solver_t
+  keyname:Domain_name.t -> Dns.Dnskey.t -> zone:Domain_name.t -> solver_t
 val default_http_solver : solver_t
 
 module Make (Client : Cohttp_lwt.S.Client) : sig

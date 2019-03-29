@@ -21,7 +21,7 @@ let doit endpoint account_key solver sleep csr =
   | Ok t -> Acme_cli.sign_certificate ~solver t sleep csr
   | Error e -> Lwt.return_error e
 
-let main _ rsa_pem csr_pem _acme_dir ip key endpoint cert =
+let main _ rsa_pem csr_pem _acme_dir ip key endpoint cert zone =
   let open Rresult.R.Infix in
   let r =
     let rsa_pem, csr_pem, cert = Fpath.(v rsa_pem, v csr_pem, v cert) in
@@ -29,24 +29,25 @@ let main _ rsa_pem csr_pem _acme_dir ip key endpoint cert =
     Bos.OS.File.read csr_pem >>= fun csr_pem ->
     Bos.OS.File.exists cert >>= function
     | true -> Error (`Msg ("output file " ^ Fpath.to_string cert ^ " already exists"))
-    | false ->
-      match Astring.String.cut ~sep:":" key with
-      | None -> Error (`Msg "couldn't parse key")
-      | Some (name, key) -> match Domain_name.of_string ~hostname:false name, Udns_packet.dnskey_of_string key with
-        | _, None | Error _, _ -> Error (`Msg "no key")
-        | Ok name, Some key ->
-          (try Ok (Unix.inet_addr_of_string ip) with Failure e -> Error (`Msg e)) >>= fun ip ->
-          err_to_msg (Primitives.priv_of_pem rsa_pem) >>= fun account_key ->
-          err_to_msg (Primitives.csr_of_pem csr_pem) >>= fun request ->
-          let now = Ptime_clock.now () in
-          Nocrypto_entropy_unix.initialize () ;
-          let random_id = Randomconv.int16 Nocrypto.Rng.generate in
-          let solver = Acme_client.default_dns_solver random_id now (dns_out ip) name key in
-          match Lwt_main.run (doit endpoint account_key solver sleep request) with
-          | Error e -> Error e
-          | Ok t ->
-            Logs.info (fun m -> m "Certificate downloaded");
-            Bos.OS.File.write cert (Cstruct.to_string @@ X509.Encoding.Pem.Certificate.to_pem_cstruct1 t)
+    | false -> match Dns.Dnskey.name_key_of_string key with
+      | Error e -> Error e
+      | Ok (keyname, key) ->
+        (try Ok (Unix.inet_addr_of_string ip) with Failure e -> Error (`Msg e)) >>= fun ip ->
+        err_to_msg (Primitives.priv_of_pem rsa_pem) >>= fun account_key ->
+        err_to_msg (Primitives.csr_of_pem csr_pem) >>= fun request ->
+        let now = Ptime_clock.now () in
+        let zone = match zone with
+          | None -> Domain_name.drop_labels_exn ~amount:2 keyname
+          | Some x -> Domain_name.of_string_exn x
+        in
+        Nocrypto_entropy_unix.initialize () ;
+        let random_id = Randomconv.int16 Nocrypto.Rng.generate in
+        let solver = Acme_client.default_dns_solver random_id now (dns_out ip) ~keyname key ~zone in
+        match Lwt_main.run (doit endpoint account_key solver sleep request) with
+        | Error e -> Error e
+        | Ok t ->
+          Logs.info (fun m -> m "Certificate downloaded");
+          Bos.OS.File.write cert (Cstruct.to_string @@ X509.Encoding.Pem.Certificate.to_pem_cstruct1 t)
   in
   match r with
   | Ok _ -> `Ok ()
@@ -89,6 +90,10 @@ let endpoint =
   let doc = "ACME endpoint" in
   Arg.(value & opt string (Uri.to_string Acme_common.letsencrypt_staging_url) & info ["endpoint"] ~doc)
 
+let zone =
+  let doc = "Zone" in
+  Arg.(value & opt (some string) None & info ["zone"] ~doc)
+
 let cert =
   let doc = "filename where to store the certificate" in
   Arg.(value & opt string "certificate.pem" & info ["cert"] ~doc)
@@ -107,7 +112,7 @@ let info =
   Term.info "oacmel" ~version:"%%VERSION%%" ~doc ~man
 
 let () =
-  let cli = Term.(const main $ setup_log $ rsa_pem $ csr_pem $ acme_dir $ ip $ key $ endpoint $ cert) in
+  let cli = Term.(const main $ setup_log $ rsa_pem $ csr_pem $ acme_dir $ ip $ key $ endpoint $ cert $ zone) in
   match Term.eval (cli, info) with
   | `Error _ -> exit 1
   | _        -> exit 0

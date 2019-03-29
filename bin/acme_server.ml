@@ -66,8 +66,8 @@ let serve s request =
     ]
   in
   match DSL.dispatch table path with
-  | Result.Ok handler -> handler s request
-  | Result.Error _    -> notfound_handler path
+  | Ok handler -> handler s request
+  | Error _    -> notfound_handler path
 
 
 let start_server s =

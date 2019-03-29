@@ -27,8 +27,8 @@ depends: [
   "x509"
   "yojson" {>= "1.6.0"}
   "ounit" {with-test}
-  "udns"
-  "udns-tsig"
+  "dns"
+  "dns-tsig"
   "ptime"
   "bos"
   "fpath"
