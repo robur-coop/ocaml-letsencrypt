@@ -2,8 +2,6 @@ open Lwt.Infix
 
 open Acme_common
 
-module Pem = X509.Encoding.Pem
-
 type t = {
   account_key : Nocrypto.Rsa.priv ;
   mutable next_nonce : string ;
@@ -329,13 +327,14 @@ let rec poll_until ?ctx sleep cli challenge =
 
 let body_to_certificate der =
   let der = Cstruct.of_string der in
-  match X509.Encoding.parse der with
-  | Some crt -> Ok crt
-  | None -> Error (`Msg "I got gibberish while trying to decode the new certificate.")
+  match X509.Certificate.decode_der der with
+  | Ok crt -> Ok crt
+  | Error (`Msg e) ->
+    Error (`Msg ("I got gibberish while trying to decode the new certificate: " ^ e))
 
 let new_cert ?ctx cli csr =
   let url = cli.d.new_cert in
-  let der = X509.Encoding.cs_of_signing_request csr |> Cstruct.to_string |> B64u.urlencode in
+  let der = X509.Signing_request.encode_der csr |> Cstruct.to_string |> B64u.urlencode in
   let data = Printf.sprintf {|{"resource": "new-cert", "csr": "%s"}|} der in
   http_post_jws ?ctx cli data url >|= function
   | Error e -> Error e
@@ -352,12 +351,13 @@ let sign_certificate ?ctx ?(solver = default_http_solver) cli sleep csr =
     (fun r domain ->
        match r with
        | Ok () ->
-         new_authz ?ctx cli domain solver.get_challenge >>= fun challenge ->
-         solver.solve_challenge sleep cli challenge domain >>= fun () ->
+         let name = Domain_name.to_string domain in
+         new_authz ?ctx cli name solver.get_challenge >>= fun challenge ->
+         solver.solve_challenge sleep cli challenge name >>= fun () ->
          challenge_met ?ctx cli solver.name challenge >>= fun () ->
          poll_until ?ctx sleep cli challenge
        | Error r -> Lwt.return_error r)
-    (Ok ()) domains >>= fun () ->
+    (Ok ()) (Domain_name.Set.elements domains) >>= fun () ->
   new_cert ?ctx cli csr >>= fun pem ->
   Lwt.return_ok pem
 

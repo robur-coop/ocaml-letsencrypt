@@ -47,7 +47,7 @@ let main _ rsa_pem csr_pem _acme_dir ip key endpoint cert zone =
         | Error e -> Error e
         | Ok t ->
           Logs.info (fun m -> m "Certificate downloaded");
-          Bos.OS.File.write cert (Cstruct.to_string @@ X509.Encoding.Pem.Certificate.to_pem_cstruct1 t)
+          Bos.OS.File.write cert (Cstruct.to_string @@ X509.Certificate.encode_pem t)
   in
   match r with
   | Ok _ -> `Ok ()

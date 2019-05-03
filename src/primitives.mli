@@ -2,7 +2,7 @@ open Nocrypto.Rsa
 
 val priv_of_pem : string -> (priv, string) result
 
-val csr_of_pem : string -> (X509.CA.signing_request, string) result
+val csr_of_pem : string -> (X509.Signing_request.t, string) result
 
 val pub_of_priv : priv -> pub
 val pub_of_z : e:Z.t -> n:Z.t -> pub

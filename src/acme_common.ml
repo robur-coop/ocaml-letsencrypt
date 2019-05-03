@@ -7,31 +7,25 @@ type directory_t = {
 }
 
 let domains_of_csr csr =
-  let flat_map f xs = List.map f xs |> List.concat in
-  let info = X509.CA.info csr in
+  let open X509.Signing_request in
+  let info = info csr in
   let subject_alt_names =
-    info.X509.CA.extensions
-    |> flat_map (function
-        | `Extensions extensions -> List.map snd extensions
-        | `Name _ | `Password _ -> [])
-    |> flat_map (function
-        | `Subject_alt_name names -> names
-        | _ -> [])
-    |> List.map (function
-        | `DNS name -> name
-        | _ -> assert false)
+    match Ext.(find Extensions info.extensions) with
+    | Some exts ->
+      begin match X509.Extension.(find Subject_alt_name exts) with
+        | None -> Domain_name.Set.empty
+        | Some (_, san) -> match X509.General_name.(find DNS san) with
+          | None -> Domain_name.Set.empty
+          | Some names -> names
+      end
+    | _ -> Domain_name.Set.empty
   in
-  match subject_alt_names with
-  | [] ->
+  if Domain_name.Set.is_empty subject_alt_names then
     (* XXX: I'm assuming there is always exactly one CN in a subject. *)
-    info.X509.CA.subject
-    |> List.find (function
-        | `CN _ -> true
-        | _ -> false)
-    |> (function
-        | `CN name -> [name]
-        | _ -> assert false)
-  | _ -> subject_alt_names
+    let cn = X509.Distinguished_name.(get CN info.subject) in
+    Domain_name.Set.singleton (Domain_name.of_string_exn cn)
+  else
+    subject_alt_names
 
 let letsencrypt_url = Uri.of_string
     "https://acme-v01.api.letsencrypt.org/directory"
