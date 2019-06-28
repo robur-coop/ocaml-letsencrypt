@@ -37,8 +37,8 @@ let main _ rsa_pem csr_pem _acme_dir ip key endpoint cert zone =
         err_to_msg (Primitives.csr_of_pem csr_pem) >>= fun request ->
         let now = Ptime_clock.now () in
         let zone = match zone with
-          | None -> Domain_name.drop_labels_exn ~amount:2 keyname
-          | Some x -> Domain_name.of_string_exn x
+          | None -> Domain_name.(host_exn (drop_label_exn ~amount:2 keyname))
+          | Some x -> Domain_name.(host_exn (of_string_exn x))
         in
         Nocrypto_entropy_unix.initialize () ;
         let random_id = Randomconv.int16 Nocrypto.Rng.generate in

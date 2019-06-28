@@ -33,6 +33,7 @@ depends: [
   "bos"
   "fpath"
   "randomconv"
+  "domain-name" {>= "0.2.0"}
 ]
 build: [
   ["dune" "subst"] {pinned}
