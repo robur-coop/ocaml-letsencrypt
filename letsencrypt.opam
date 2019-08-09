@@ -24,7 +24,7 @@ depends: [
   "fmt"
   "lwt" {>= "2.6.0"}
   "nocrypto"
-  "x509" {>= "0.7.0"}
+  "x509" {>= "0.7.1"}
   "yojson" {>= "1.6.0"}
   "ounit" {with-test}
   "dns"

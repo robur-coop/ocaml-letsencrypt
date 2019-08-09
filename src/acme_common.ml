@@ -13,19 +13,18 @@ let domains_of_csr csr =
     match Ext.(find Extensions info.extensions) with
     | Some exts ->
       begin match X509.Extension.(find Subject_alt_name exts) with
-        | None -> Domain_name.Set.empty
+        | None -> []
         | Some (_, san) -> match X509.General_name.(find DNS san) with
-          | None -> Domain_name.Set.empty
+          | None -> []
           | Some names -> names
       end
-    | _ -> Domain_name.Set.empty
+    | _ -> []
   in
-  if Domain_name.Set.is_empty subject_alt_names then
+  match subject_alt_names with
+  | [] ->
     (* XXX: I'm assuming there is always exactly one CN in a subject. *)
-    let cn = X509.Distinguished_name.(get CN info.subject) in
-    Domain_name.Set.singleton (Domain_name.of_string_exn cn)
-  else
-    subject_alt_names
+    [ X509.Distinguished_name.(get CN info.subject) ]
+  | _ -> subject_alt_names
 
 let letsencrypt_url = Uri.of_string
     "https://acme-v01.api.letsencrypt.org/directory"

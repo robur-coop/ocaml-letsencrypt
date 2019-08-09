@@ -346,18 +346,16 @@ let new_cert ?ctx cli csr =
 let sign_certificate ?ctx ?(solver = default_http_solver) cli sleep csr =
   let open Lwt_result.Infix in
   (* for all domains, ask the ACME server for a certificate *)
-  let domains = domains_of_csr csr in
   Lwt_list.fold_left_s
-    (fun r domain ->
+    (fun r name ->
        match r with
        | Ok () ->
-         let name = Domain_name.to_string domain in
          new_authz ?ctx cli name solver.get_challenge >>= fun challenge ->
          solver.solve_challenge sleep cli challenge name >>= fun () ->
          challenge_met ?ctx cli solver.name challenge >>= fun () ->
          poll_until ?ctx sleep cli challenge
        | Error r -> Lwt.return_error r)
-    (Ok ()) (Domain_name.Set.elements domains) >>= fun () ->
+    (Ok ()) (domains_of_csr csr) >>= fun () ->
   new_cert ?ctx cli csr >>= fun pem ->
   Lwt.return_ok pem
 
