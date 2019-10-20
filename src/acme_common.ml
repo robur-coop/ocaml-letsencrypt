@@ -22,8 +22,10 @@ let domains_of_csr csr =
   in
   match subject_alt_names with
   | [] ->
-    (* XXX: I'm assuming there is always exactly one CN in a subject. *)
-    [ X509.Distinguished_name.(get CN info.subject) ]
+    begin match X509.Distinguished_name.common_name info.subject with
+      | None -> []
+      | Some x -> [ x ]
+    end
   | _ -> subject_alt_names
 
 let letsencrypt_url = Uri.of_string
