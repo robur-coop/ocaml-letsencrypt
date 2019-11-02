@@ -1,3 +1,9 @@
+# [let's encrypt](https://letsencrypt.org/) - an ACME implementation in OCaml
+
+This package contains an implementation of the ACME protocol (mostly client
+side) purely in OCaml based on draft05. The HTTP and DNS challenges are
+implemented (DNS sends signed nsupdate to the authoritative DNS server).
+
 Build with:
 
     $ opam pin add letsencrypt .
