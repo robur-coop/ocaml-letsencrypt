@@ -2,6 +2,9 @@ open Lwt.Infix
 
 open Acme_common
 
+let src = Logs.Src.create "letsencrypt" ~doc:"let's encrypt library"
+module Log = (val Logs.src_log src : Logs.LOG)
+
 type t = {
   account_key : Nocrypto.Rsa.priv ;
   mutable next_nonce : string ;
@@ -48,8 +51,8 @@ let get_challenge challenge_filter authorization =
   match List.filter challenge_filter challenges with
   | [] -> Error (`Msg "No supported challenges found.")
   | challenge :: cs ->
-    Logs.debug (fun m -> m "got %d challenges, using the head"
-                   (succ (List.length cs))) ;
+    Log.debug (fun m -> m "got %d challenges, using the head"
+                  (succ (List.length cs))) ;
     Json.string_member "token" challenge >>= fun token ->
     Json.string_member "uri" challenge >>= fun url ->
     Ok { token ; url = Uri.of_string url }
@@ -79,8 +82,8 @@ let http_solver writef =
 
 let default_http_solver =
   let default_writef domain file content =
-    Logs.info (fun f -> f "Domain %a wants file %s content %s\n"
-                  Domain_name.pp domain file content);
+    Log.info (fun f -> f "Domain %a wants file %s content %s\n"
+                 Domain_name.pp domain file content);
     ignore (read_line ())
   in
   http_solver default_writef
@@ -114,6 +117,8 @@ let default_dns_solver ?proto id now out ?recv ~keyname key ~zone =
   let open Dns in
   let nsupdate host record =
     let name = Domain_name.prepend_label_exn host "_acme-challenge" in
+    Log.info (fun m -> m "solving dns by update to! %a (name %a)"
+                 Domain_name.pp zone Domain_name.pp name);
     let zone = Packet.Question.create zone Rr_map.Soa
     and update =
       let up =
@@ -157,10 +162,10 @@ let http_get ?ctx url =
   let code = resp |> Cohttp.Response.status |> Cohttp.Code.code_of_status in
   let headers = resp |> Cohttp.Response.headers in
   body |> Cohttp_lwt.Body.to_string >>= fun body ->
-  Logs.debug (fun m -> m "HTTP get: %a" Uri.pp_hum url);
-  Logs.debug (fun m -> m "Got code: %d" code);
-  Logs.debug (fun m -> m "headers \"%s\"" (Cohttp.Header.to_string headers));
-  Logs.debug (fun m -> m "body \"%s\"" (String.escaped body));
+  Log.debug (fun m -> m "HTTP get: %a" Uri.pp_hum url);
+  Log.debug (fun m -> m "Got code: %d" code);
+  Log.debug (fun m -> m "headers \"%s\"" (Cohttp.Header.to_string headers));
+  Log.debug (fun m -> m "body \"%s\"" (String.escaped body));
   Lwt.return (code, headers, body)
 
 let discover ?ctx directory =
@@ -192,16 +197,16 @@ let rec http_post_jws ?ctx cli data url =
     (header, body)
   in
   let headers, body = prepare_post cli.account_key cli.next_nonce data in
-  Logs.debug (fun m -> m "HTTP post %a (data %s body %s)"
-                 Uri.pp_hum url data (String.escaped body));
+  Log.debug (fun m -> m "HTTP post %a (data %s body %s)"
+                Uri.pp_hum url data (String.escaped body));
   let body = Cohttp_lwt.Body.of_string body in
   Client.post ?ctx ~body ~headers url >>= fun (resp, body) ->
   let code = resp |> Cohttp.Response.status |> Cohttp.Code.code_of_status in
   let headers = resp |> Cohttp.Response.headers in
   body |> Cohttp_lwt.Body.to_string >>= fun body ->
-  Logs.debug (fun m -> m "Got code: %d" code);
-  Logs.debug (fun m -> m "headers \"%s\"" (Cohttp.Header.to_string headers));
-  Logs.debug (fun m -> m "body \"%s\"" (String.escaped body));
+  Log.debug (fun m -> m "Got code: %d" code);
+  Log.debug (fun m -> m "headers \"%s\"" (Cohttp.Header.to_string headers));
+  Log.debug (fun m -> m "body \"%s\"" (String.escaped body));
   match extract_nonce headers with
   | Error e -> Lwt.return_error e
   | Ok next_nonce ->
@@ -209,7 +214,7 @@ let rec http_post_jws ?ctx cli data url =
     cli.next_nonce <- next_nonce;
     match code with
     | 400 when bad_nonce body ->
-      Logs.warn (fun m -> m "received bad nonce (and a fresh nonce), retrying same request");
+      Log.warn (fun m -> m "received bad nonce (and a fresh nonce), retrying same request");
       http_post_jws ?ctx cli data url
     | _ -> Lwt.return_ok (code, headers, body)
 
@@ -233,16 +238,16 @@ let new_reg ?ctx cli =
         | Some accept_url ->
           begin match Cohttp.Header.get_links headers |> get_terms_of_service with
             | Some terms ->
-              Logs.info (fun m -> m "Must accept terms.");
+              Log.info (fun m -> m "Must accept terms.");
               Ok (Some (terms, accept_url))
             | None -> Error (`Msg "Accept url without terms-of-service")
           end
         | None ->
-          Logs.info (fun m -> m "Account created.");
+          Log.info (fun m -> m "Account created.");
           Ok None
       end
     | 409 ->
-      Logs.info (fun m -> m "Already registered.");
+      Log.info (fun m -> m "Already registered.");
       Ok None
     | _ -> error_in "new-reg" code body
 
@@ -257,8 +262,8 @@ let accept_terms ?ctx cli ~url ~terms =
   | Error e -> Error e
   | Ok (code, _headers, body) ->
     match code with
-    | 202 -> Logs.info (fun m -> m "Terms accepted."); Ok ()
-    | 409 -> Logs.info (fun m -> m "Already registered."); Ok ()
+    | 202 -> Log.info (fun m -> m "Terms accepted."); Ok ()
+    | 409 -> Log.info (fun m -> m "Already registered."); Ok ()
     | _ -> error_in "accept_terms" code body
 
 let new_authz ?ctx cli domain get_challenge =
@@ -323,7 +328,7 @@ let rec poll_until ?ctx sleep cli challenge =
   | Error e  -> Lwt.return_error e
   | Ok false -> Lwt.return_ok ()
   | Ok true  ->
-    Logs.info (fun m -> m "Polling...");
+    Log.info (fun m -> m "Polling...");
     sleep () >>= fun () ->
     poll_until ?ctx sleep cli challenge
 
@@ -354,9 +359,13 @@ let sign_certificate ?ctx ?(solver = default_http_solver) cli sleep csr =
        match typ with
        | `Strict ->
          new_authz ?ctx cli name solver.get_challenge >>= fun challenge ->
+         Log.info (fun m -> m "LE got challenge %a" Domain_name.pp name);
          solver.solve_challenge sleep cli challenge name >>= fun () ->
+         Log.info (fun m -> m "LE solver solved! %a" Domain_name.pp name);
          challenge_met ?ctx cli solver.name challenge >>= fun () ->
-         poll_until ?ctx sleep cli challenge
+         Log.info (fun m -> m "LE challenge met, polling! %a" Domain_name.pp name);
+         poll_until ?ctx sleep cli challenge >|= fun () ->
+         Log.info (fun m -> m "LE for %a finished" Domain_name.pp name)
        | `Wildcard ->
          Lwt.return (Error (`Msg "wildcard hostnames are not supported")))
     (X509.Signing_request.hostnames csr) (Lwt.return (Ok ())) >>= fun () ->
@@ -373,10 +382,10 @@ let initialise ?ctx ?(directory = letsencrypt_url) account_key =
   new_reg ?ctx cli >>= function
   | Some (terms_link, accept_url) ->
     let terms = terms_link.Cohttp.Link.target in
-    Logs.info (fun f -> f "Accepting terms at %s\n" (Uri.to_string terms));
+    Log.info (fun f -> f "Accepting terms at %s\n" (Uri.to_string terms));
     accept_terms ?ctx cli ~url:accept_url ~terms >>= fun () ->
     Lwt.return_ok cli
   | None ->
-    Logs.info (fun f -> f "No ToS.");
+    Log.info (fun f -> f "No ToS.");
     Lwt.return_ok cli
 end
