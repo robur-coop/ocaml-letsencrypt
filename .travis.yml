@@ -10,7 +10,6 @@ env:
     - DISTRO=alpine
     - TESTS=true
   matrix:
-    - OCAML_VERSION=4.06
     - OCAML_VERSION=4.07
     - OCAML_VERSION=4.08
     - OCAML_VERSION=4.09
