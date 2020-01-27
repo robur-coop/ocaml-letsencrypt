@@ -1,6 +1,4 @@
 opam-version: "2.0"
-name: "letsencrypt"
-version: "0.1"
 synopsis: "ACME implementation in OCaml"
 description: "An implementation of the ACME protocol for OCaml"
 maintainer: "Michele Mu <maker@tumbolandia.net>"
@@ -11,7 +9,7 @@ homepage: "https://github.com/mmaker/ocaml-letsencrypt"
 bug-reports: "https://github.com/mmaker/ocaml-letsencrypt/issues"
 doc: "https://mmaker.github.io/ocaml-letsencrypt"
 depends: [
-  "ocaml" {>= "4.05.0"}
+  "ocaml" {>= "4.07.0"}
   "dune"
   "astring"
   "rresult"
@@ -25,7 +23,7 @@ depends: [
   "fmt"
   "lwt" {>= "2.6.0"}
   "nocrypto"
-  "x509" {>= "0.8.1"}
+  "x509" {>= "0.9.0"}
   "yojson" {>= "1.6.0"}
   "ounit" {with-test}
   "dns"
