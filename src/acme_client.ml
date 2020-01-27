@@ -16,7 +16,8 @@ type challenge_t = {
 type solver_t = {
   name : string ;
   get_challenge : Json.t -> (challenge_t, [ `Msg of string ]) result ;
-  solve_challenge : (unit -> unit Lwt.t) -> t -> challenge_t -> string -> (unit, [ `Msg of string ]) result Lwt.t ;
+  solve_challenge : (unit -> unit Lwt.t) -> t -> challenge_t ->
+    [`host] Domain_name.t -> (unit, [ `Msg of string ]) result Lwt.t ;
 }
 
 let error_in endpoint code body =
@@ -78,7 +79,8 @@ let http_solver writef =
 
 let default_http_solver =
   let default_writef domain file content =
-    Logs.info (fun f -> f "Domain %s wants file %s content %s\n" domain file content);
+    Logs.info (fun f -> f "Domain %a wants file %s content %s\n"
+                  Domain_name.pp domain file content);
     ignore (read_line ())
   in
   http_solver default_writef
@@ -111,7 +113,7 @@ let dns_solver writef =
 let default_dns_solver ?proto id now out ?recv ~keyname key ~zone =
   let open Dns in
   let nsupdate host record =
-    let name = Domain_name.prepend_label_exn (Domain_name.of_string_exn host) "_acme-challenge" in
+    let name = Domain_name.prepend_label_exn host "_acme-challenge" in
     let zone = Packet.Question.create zone Rr_map.Soa
     and update =
       let up =
@@ -263,7 +265,7 @@ let new_authz ?ctx cli domain get_challenge =
   let url = cli.d.new_authz in
   let body = Printf.sprintf
       {|{"resource": "new-authz", "identifier": {"type": "dns", "value": "%s"}}|}
-      domain
+      (Domain_name.to_string domain)
   in
   http_post_jws ?ctx cli body url >|= function
   | Error e -> Error e
@@ -346,16 +348,18 @@ let new_cert ?ctx cli csr =
 let sign_certificate ?ctx ?(solver = default_http_solver) cli sleep csr =
   let open Lwt_result.Infix in
   (* for all domains, ask the ACME server for a certificate *)
-  Lwt_list.fold_left_s
-    (fun r name ->
-       match r with
-       | Ok () ->
+  X509.Certificate.Host_set.fold
+    (fun (typ, name) r ->
+       r >>= fun () ->
+       match typ with
+       | `Strict ->
          new_authz ?ctx cli name solver.get_challenge >>= fun challenge ->
          solver.solve_challenge sleep cli challenge name >>= fun () ->
          challenge_met ?ctx cli solver.name challenge >>= fun () ->
          poll_until ?ctx sleep cli challenge
-       | Error r -> Lwt.return_error r)
-    (Ok ()) (domains_of_csr csr) >>= fun () ->
+       | `Wildcard ->
+         Lwt.return (Error (`Msg "wildcard hostnames are not supported")))
+    (X509.Signing_request.hostnames csr) (Lwt.return (Ok ())) >>= fun () ->
   new_cert ?ctx cli csr >>= fun pem ->
   Lwt.return_ok pem
 
