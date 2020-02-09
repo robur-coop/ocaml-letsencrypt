@@ -1,15 +1,5 @@
 open Nocrypto
 
-let priv_of_pem rsa_pem =
-  match X509.Private_key.decode_pem (Cstruct.of_string rsa_pem) with
-  | Ok (`RSA priv) -> Ok priv
-  | Error (`Msg e) -> Error e
-
-let csr_of_pem pem =
-  match X509.Signing_request.decode_pem (Cstruct.of_string pem) with
-  | Ok it -> Ok it
-  | Error (`Msg e) -> Error e
-
 let pub_of_priv = Rsa.pub_of_priv
 let pub_of_z ~e ~n = Rsa.{e; n}
 let pub_to_z (key : Rsa.pub) = Rsa.(key.e, key.n)
