@@ -1,6 +1,6 @@
 opam-version: "2.0"
 synopsis: "ACME implementation in OCaml"
-description: "An implementation of the ACME protocol for OCaml"
+description: "An implementation of the ACME protocol (RFC 8555) for OCaml"
 maintainer: "Michele Mu <maker@tumbolandia.net>"
 authors:
   "Michele Mu <maker@tumbolandia.net>, Hannes Mehnert <hannes@mehnert.org>"
@@ -10,13 +10,13 @@ bug-reports: "https://github.com/mmaker/ocaml-letsencrypt/issues"
 doc: "https://mmaker.github.io/ocaml-letsencrypt"
 depends: [
   "ocaml" {>= "4.07.0"}
-  "dune"
+  "dune" {>= "1.2.0"}
   "astring"
   "rresult"
   "base64" {>= "3.1.0"}
   "cmdliner"
   "cohttp"
-  "cohttp-lwt"
+  "cohttp-lwt" {>= "2.5.1"}
   "cohttp-lwt-unix" {>= "1.0.0"}
   "zarith"
   "logs"

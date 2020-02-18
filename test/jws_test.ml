@@ -1,5 +1,7 @@
 open OUnit2
 
+open Letsencrypt__Acme_common
+
 let testkey_pem = "
 -----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEA4xgZ3eRPkwoRvy7qeRUbmMDe0V+xH9eWLdu0iheeLlrmD2mq
@@ -55,23 +57,33 @@ let expected_signature =
   "9IPLr8qZ7usYBKhEGwX3yq_eicAwBw"
 
 let rsa_key () =
-  match Primitives.priv_of_pem testkey_pem with
-  | Ok skey -> skey
-  | Error e -> assert_failure e
+  match X509.Private_key.decode_pem (Cstruct.of_string testkey_pem) with
+  | Ok `RSA skey -> skey
+  | Error `Msg e -> assert_failure e
+
+let string_member key json =
+  match Yojson.Basic.Util.member key json with
+  | `String s -> Ok s
+  | _ -> Rresult.R.error_msgf "couldn't find string %s in %a"
+           key Yojson.Basic.pp json
+
+let json_of_string s =
+  try Ok (Yojson.Basic.from_string s) with
+    Yojson.Json_error str -> Error (`Msg str)
 
 let jws_encode_somedata () =
   let priv_key = rsa_key () in
   let data  = {|{"Msg":"Hello JWS"}|} in
   let nonce = "nonce" in
-  let jws = Jws.encode priv_key data nonce in
-  match Json.of_string jws with
+  let protected = [ "jwk", Jwk.encode (`Rsa (Letsencrypt__Primitives.pub_of_priv priv_key)) ] in
+  let jws = Jws.encode ~protected ~data ~nonce priv_key in
+  match json_of_string jws with
   | Ok json -> json
   | Error (`Msg e) -> assert_failure e
 
-
 let test_member member expected _ctx =
   let jws = jws_encode_somedata () in
-  match Json.string_member member jws with
+  match string_member member jws with
   | Ok protected -> assert_equal protected expected
   | Error (`Msg e) -> assert_failure e
 
@@ -94,7 +106,7 @@ let test_decode_rsakey _ctx =
   match jws with
   | Error (`Msg e) -> assert_failure e
   | Ok (protected, _payload) ->
-    let pub = Primitives.pub_of_priv key in
+    let pub = Letsencrypt__Primitives.pub_of_priv key in
     assert_equal protected.Jws.jwk (Some (`Rsa pub))
 
 (* XXX. at this stage we probably wont the expected payload to be on some
@@ -109,7 +121,7 @@ let test_decode_payload _ctx =
 let all_tests = [
   "test_encode_protected" >:: test_encode_protected;
   "test_encode_payload" >:: test_encode_payload;
-  "test_edincode_signature" >:: test_encode_signature;
+  "test_encode_signature" >:: test_encode_signature;
 
   "test_decode_null" >:: test_decode_null;
   "test_decode_rsakey" >:: test_decode_rsakey;
