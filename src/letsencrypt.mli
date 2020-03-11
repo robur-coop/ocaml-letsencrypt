@@ -59,7 +59,8 @@ module Client: sig
   val nsupdate : ?proto:Dns.proto -> int -> (unit -> Ptime.t) ->
     (Cstruct.t -> (unit, [ `Msg of string ]) result Lwt.t) ->
     ?recv:(unit -> (Cstruct.t, [ `Msg of string ]) result Lwt.t) ->
-    keyname:'a Domain_name.t -> Dns.Dnskey.t -> zone:[ `host ] Domain_name.t -> solver
+    zone:[ `host ] Domain_name.t ->
+    keyname:'a Domain_name.t -> Dns.Dnskey.t -> solver
 
   (** [alpn_solver (fun domain ~alpn private_key certificate)] is a solver for
       tls-alpn-01 challenes. The provided function should return [Ok ()] once

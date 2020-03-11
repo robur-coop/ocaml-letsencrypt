@@ -75,7 +75,7 @@ let print_dns =
   in
   dns_solver solve
 
-let nsupdate ?proto id now out ?recv ~keyname key ~zone =
+let nsupdate ?proto id now out ?recv ~zone ~keyname key =
   let open Dns in
   let nsupdate name record =
     Log.info (fun m -> m "solving dns by update to! %a (name %a)"
