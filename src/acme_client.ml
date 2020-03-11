@@ -20,7 +20,7 @@ let key_authorization key token =
   Printf.sprintf "%s.%s" token thumbprint
 
 type t = {
-  account_key : Nocrypto.Rsa.priv;
+  account_key : Mirage_crypto_pk.Rsa.priv;
   mutable next_nonce : string;
   d : Directory.t;
   account_url : Uri.t;
@@ -127,7 +127,7 @@ let alpn_solver writef =
     enc hash
   in
   let solve_challenge ~token:_ ~key_authorization domain =
-    let priv = `RSA (Nocrypto.Rsa.generate 2048) in
+    let priv = `RSA (Mirage_crypto_pk.Rsa.generate ~bits:2048 ()) in
     let open X509 in
     let solution = Primitives.sha256 key_authorization |> Cstruct.of_string in
     let name = Domain_name.to_string domain in
@@ -521,7 +521,7 @@ let rec process_order ?ctx solver cli sleep csr order_url headers order =
 
 let new_order ?ctx solver cli sleep csr =
   let hostnames =
-    X509.Certificate.Host_set.fold
+    X509.Host.Set.fold
       (fun (typ, name) acc ->
          let pre = match typ with `Strict -> "" | `Wildcard -> "*." in
          (pre ^ Domain_name.to_string name) :: acc)

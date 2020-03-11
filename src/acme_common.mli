@@ -14,7 +14,7 @@ module Jwk : sig
 
   (** [key] identifies a key.
       At present, this implementation only manages RSA keys. *)
-  type key = [ `Rsa of Nocrypto.Rsa.pub ]
+  type key = [ `Rsa of Mirage_crypto_pk.Rsa.pub ]
 
   val thumbprint : key -> string
   (** [thumbprint key] produces the JWK thumbprint of [key]. *)
@@ -40,10 +40,10 @@ module Jws : sig
   }
 
   val encode_acme : ?kid_url:Uri.t -> data:string -> nonce:string -> Uri.t ->
-    Nocrypto.Rsa.priv -> string
+    Mirage_crypto_pk.Rsa.priv -> string
 
   val encode : ?protected:(string * json) list -> data:string -> nonce:string ->
-    Nocrypto.Rsa.priv -> string
+    Mirage_crypto_pk.Rsa.priv -> string
 
   val decode : ?pub:Jwk.key -> string -> (header * string, [> `Msg of string ]) result
 end

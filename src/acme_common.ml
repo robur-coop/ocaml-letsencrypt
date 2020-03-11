@@ -103,7 +103,7 @@ let maybe f = function
   | Some s -> f s >>| fun s' -> Some s'
 
 module Jwk = struct
-  type key = [ `Rsa of Nocrypto.Rsa.pub ]
+  type key = [ `Rsa of Mirage_crypto_pk.Rsa.pub ]
 
   let encode = function
     | `Rsa key ->
@@ -119,7 +119,8 @@ module Jwk = struct
     | "RSA" ->
       b64_z_val "e" json >>= fun e ->
       b64_z_val "n" json >>= fun n ->
-      Ok (`Rsa (Primitives.pub_of_z ~e ~n))
+      Primitives.pub_of_z ~e ~n >>= fun pub ->
+      Ok (`Rsa pub)
     | x -> Rresult.R.error_msgf "unknown key type %s" x
 
   let decode data =

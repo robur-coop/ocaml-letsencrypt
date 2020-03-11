@@ -80,7 +80,7 @@ module Client: sig
         account is registered yet, a new account is created with contact
         information of [email]. The terms of service are agreed on. *)
     val initialise : ?ctx:Http.ctx -> endpoint:Uri.t -> ?email:string ->
-      Nocrypto.Rsa.priv -> (t, [> `Msg of string ]) result Lwt.t
+      Mirage_crypto_pk.Rsa.priv -> (t, [> `Msg of string ]) result Lwt.t
 
     (** [sign_certificate ~ctx solver t sleep csr] orders a certificate for
         the names in the signing request [csr], and solves the requested
@@ -89,6 +89,7 @@ module Client: sig
       solver -> t -> (int -> unit Lwt.t) ->
       X509.Signing_request.t ->
       (X509.Certificate.t list, [> `Msg of string ]) result Lwt.t
+      (* TODO: use X509.Certificate.t * list *)
   end
 
 end

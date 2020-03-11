@@ -22,7 +22,9 @@ depends: [
   "logs"
   "fmt"
   "lwt" {>= "2.6.0"}
-  "nocrypto"
+  "mirage-crypto"
+  "mirage-crypto-pk"
+  "mirage-crypto-rng"
   "x509" {>= "0.9.0"}
   "yojson" {>= "1.6.0"}
   "ounit" {with-test}
