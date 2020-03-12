@@ -19,7 +19,7 @@ let doit email endpoint account_key solver sleep csr =
   | Error e -> Lwt.return_error e
 
 let main _ rsa_pem csr_pem email solver acme_dir ip key endpoint cert zone =
-  Nocrypto_entropy_unix.initialize () ;
+  Mirage_crypto_rng_unix.initialize () ;
   let open Rresult.R.Infix in
   let r =
     let rsa_pem, csr_pem, cert = Fpath.(v rsa_pem, v csr_pem, v cert) in
@@ -47,7 +47,7 @@ let main _ rsa_pem csr_pem email solver acme_dir ip key endpoint cert zone =
             | None -> Domain_name.(host_exn (drop_label_exn ~amount:2 keyname))
             | Some x -> Domain_name.(host_exn (of_string_exn x))
           in
-          let random_id = Randomconv.int16 Nocrypto.Rng.generate in
+          let random_id = Randomconv.int16 Mirage_crypto_rng.generate in
           Letsencrypt.Client.nsupdate random_id Ptime_clock.now (dns_out ip') ~keyname key ~zone
         | Some `Dns, None, None, None ->
           Logs.app (fun m -> m "using dns solver");

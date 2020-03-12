@@ -16,7 +16,8 @@ let e64 = "AQAB"
 let e = match Letsencrypt__B64u.urldecodez e64 with
     Error (`Msg e) -> invalid_arg e | Ok e -> e
 
-let pub_key = `Rsa (Letsencrypt__Primitives.pub_of_z ~e ~n)
+let pub_key = match Letsencrypt__Primitives.pub_of_z ~e ~n with
+    Error (`Msg e) -> invalid_arg e | Ok p -> `Rsa p
 
 let test_encode _ctx =
   let got = json_to_string (Jwk.encode pub_key) in
