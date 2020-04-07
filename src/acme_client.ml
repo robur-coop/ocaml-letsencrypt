@@ -141,9 +141,12 @@ let alpn_solver writef =
                    (singleton (Unsupported id_pe_acme) (true, full)))
     in
     let valid_from, valid_until = Ptime.epoch, Ptime.epoch in
-    match Signing_request.sign csr ~valid_from ~valid_until ~extensions priv dn with
-    | Error e -> Lwt.return (Error e)
+    match
+      Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_signature_error
+        (Signing_request.sign csr ~valid_from ~valid_until ~extensions priv dn)
+    with
     | Ok cert -> writef domain ~alpn priv cert
+    | Error _ as e -> Lwt.return e
   in
   { typ = `Alpn ; solve_challenge }
 
