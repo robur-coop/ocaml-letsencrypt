@@ -1,3 +1,7 @@
+# v0.2.3 (2021-01-21)
+
+* adapt to mirage-crypto-pk 0.8.9 changes (d = e ^ -1 mod lam n) #22
+
 # v0.2.2 (2020-04-09)
 
 * adapt to x509 0.11.0 API #21
