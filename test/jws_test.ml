@@ -60,6 +60,7 @@ let expected_signature =
 let rsa_key () =
   match X509.Private_key.decode_pem (Cstruct.of_string testkey_pem) with
   | Ok `RSA skey -> skey
+  | Ok _ -> assert_failure "unsupported key type"
   | Error `Msg e -> assert_failure e
 
 let string_member key json =
