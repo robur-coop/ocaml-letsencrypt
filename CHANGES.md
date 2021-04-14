@@ -1,3 +1,8 @@
+# v0.2.4 (2021-04-14)
+
+* adapt to X.509 0.12.0 (#23 @dinosaure) by completing the pattern match in
+  oacmel (still, only RSA account keys are supported)
+
 # v0.2.3 (2021-01-21)
 
 * adapt to mirage-crypto-pk 0.8.9 changes (d = e ^ -1 mod lam n) #22
