@@ -1,3 +1,7 @@
+# v0.2.5 (2021-04-22)
+
+* adapt to X.509 0.13.0 API (@hannesm)
+
 # v0.2.4 (2021-04-14)
 
 * adapt to X.509 0.12.0 (#23 @dinosaure) by completing the pattern match in

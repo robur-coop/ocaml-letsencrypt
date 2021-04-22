@@ -133,7 +133,6 @@ let alpn_solver writef =
     let name = Domain_name.to_string domain in
     let cn = Distinguished_name.CN name in
     let dn = [ Distinguished_name.Relative_distinguished_name.singleton cn ] in
-    let csr = Signing_request.create dn priv in
     let extensions =
       let gn = General_name.(singleton DNS [ name ]) in
       let full = encode_val solution in
@@ -142,6 +141,8 @@ let alpn_solver writef =
     in
     let valid_from, valid_until = Ptime.epoch, Ptime.epoch in
     match
+      let open Rresult.R.Infix in
+      Signing_request.create dn priv >>= fun csr ->
       Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_signature_error
         (Signing_request.sign csr ~valid_from ~valid_until ~extensions priv dn)
     with
