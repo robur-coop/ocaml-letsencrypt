@@ -1,3 +1,10 @@
+# v0.3.0 (2021-07-19)
+
+Reduce dependency cone (#26, @dinosaure & @hannesm)
+- remove cohttp dependency, provide a HTTP_client module type
+- provide letsencrypt-dns with dns solver
+- provide letsencrypt-app for the client binary
+
 # v0.2.5 (2021-04-22)
 
 * adapt to X.509 0.13.0 API (@hannesm)
