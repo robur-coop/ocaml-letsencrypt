@@ -8,6 +8,7 @@ challenges are implemented.
 Build with:
 
     $ opam install letsencrypt
+    $ opam install letsencrypt-app #for oacmel, the LE client binary
 
 Generate a new account key with:
 
