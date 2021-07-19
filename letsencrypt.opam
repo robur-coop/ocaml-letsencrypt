@@ -16,6 +16,7 @@ depends: [
   "base64" {>= "3.1.0"}
   "logs"
   "fmt"
+  "uri"
   "lwt" {>= "2.6.0"}
   "mirage-crypto"
   "mirage-crypto-pk"
