@@ -11,8 +11,8 @@ doc: "https://mmaker.github.io/ocaml-letsencrypt"
 depends: [
   "ocaml" {>= "4.08.0"}
   "dune" {>= "1.2.0"}
-  "letsencrypt" #{= version}
-  "letsencrypt-dns" #{= version}
+  "letsencrypt" {= version}
+  "letsencrypt-dns" {= version}
   "cmdliner"
   "cohttp-lwt-unix" {>= "1.0.0"}
   "logs"

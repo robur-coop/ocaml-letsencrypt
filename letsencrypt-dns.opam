@@ -11,8 +11,7 @@ doc: "https://mmaker.github.io/ocaml-letsencrypt"
 depends: [
   "ocaml" {>= "4.08.0"}
   "dune" {>= "1.2.0"}
-  "letsencrypt" #{= version}
-  "mirage-crypto"
+  "letsencrypt" {= version}
   "logs"
   "fmt"
   "lwt" {>= "2.6.0"}
