@@ -61,10 +61,10 @@ let main _ rsa_pem csr_pem email solver acme_dir ip key endpoint cert zone =
               | Some x -> Domain_name.(host_exn (of_string_exn x))
             in
             let random_id = Randomconv.int16 Mirage_crypto_rng.generate in
-            Letsencrypt.Client.nsupdate random_id Ptime_clock.now (dns_out ip') ~keyname key ~zone
+            Letsencrypt_dns.nsupdate random_id Ptime_clock.now (dns_out ip') ~keyname key ~zone
           | Some `Dns, None, None, None ->
             Logs.app (fun m -> m "using dns solver");
-            Letsencrypt.Client.print_dns
+            Letsencrypt_dns.print_dns
           | Some `Http, None, None, None ->
             Logs.app (fun m -> m "using http solver");
             Letsencrypt.Client.print_http

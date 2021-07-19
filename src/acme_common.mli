@@ -2,6 +2,8 @@ val letsencrypt_production_url : Uri.t
 
 val letsencrypt_staging_url : Uri.t
 
+val sha256_and_base64 : string -> string
+
 type json = Yojson.Basic.t
 
 val json_to_string : ?comma:string -> ?colon:string -> json -> string

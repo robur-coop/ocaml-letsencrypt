@@ -7,6 +7,9 @@ let letsencrypt_production_url =
 let letsencrypt_staging_url =
   Uri.of_string "https://acme-staging-v02.api.letsencrypt.org/directory"
 
+let sha256_and_base64 a =
+  Primitives.sha256 a |> B64u.urlencode
+
 module J = Yojson.Basic
 
 type json = J.t
