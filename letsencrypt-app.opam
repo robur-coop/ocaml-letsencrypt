@@ -23,6 +23,7 @@ depends: [
   "bos"
   "fpath"
   "randomconv"
+  "cstruct" {>= "6.0.0"}
 ]
 build: [
   ["dune" "subst"] {dev}

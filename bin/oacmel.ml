@@ -17,7 +17,7 @@ module Acme_cli = Letsencrypt.Client.Make(HTTP_client)
 let dns_out ip cs =
   let out = Lwt_unix.(socket PF_INET SOCK_DGRAM 0) in
   let server = Lwt_unix.ADDR_INET (ip, 53) in
-  let bl = Cstruct.len cs in
+  let bl = Cstruct.length cs in
   Lwt_unix.sendto out (Cstruct.to_bytes cs) 0 bl [] server >>= fun n ->
   (* TODO should listen for a reply from NS, report potential errors and retransmit if UDP frame got lost *)
   if n = bl then Lwt.return_ok () else Lwt.return_error (`Msg "couldn't send nsupdate")
