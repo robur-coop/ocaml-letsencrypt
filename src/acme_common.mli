@@ -81,7 +81,7 @@ module Account : sig
     account_status : [ `Valid | `Deactivated | `Revoked ];
     contact : string list option;
     terms_of_service_agreed : bool option;
-    orders : Uri.t list;
+    orders : Uri.t option;
     initial_ip : string option;
     created_at : Ptime.t option;
   }

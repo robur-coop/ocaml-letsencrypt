@@ -264,7 +264,7 @@ module Account = struct
     contact : string list option;
     terms_of_service_agreed : bool option;
     (* externalAccountBinding *)
-    orders : Uri.t list;
+    orders : Uri.t option;
     initial_ip : string option;
     created_at : Ptime.t option;
   }
@@ -281,7 +281,7 @@ module Account = struct
       Fmt.(option ~none:(unit "no contact") (list ~sep:(unit ", ") string))
       a.contact
       Fmt.(option ~none:(unit "unknown") bool) a.terms_of_service_agreed
-      Fmt.(list ~sep:(unit ", ") Uri.pp_hum) a.orders
+      Fmt.(option ~none:(unit "unknown") Uri.pp_hum) a.orders
       Fmt.(option ~none:(unit "unknown") string) a.initial_ip
       Fmt.(option ~none:(unit "unknown") (Ptime.pp_rfc3339 ())) a.created_at
 
@@ -304,9 +304,7 @@ module Account = struct
     string_val "status" json >>= status_of_string >>= fun account_status ->
     opt_string_list "contact" json >>= fun contact ->
     opt_bool "termsOfServiceAgreed" json >>= fun terms_of_service_agreed ->
-    (opt_string_list "orders" json >>= function
-      | None -> Ok []
-      | Some orders -> Ok (List.map Uri.of_string orders)) >>= fun orders ->
+    opt_string_val "orders" json >>= maybe uri >>= fun orders ->
     opt_string_val "initialIp" json >>= fun initial_ip ->
     opt_string_val "createdAt" json >>= maybe decode_ptime >>| fun created_at ->
     { account_status ; contact ; terms_of_service_agreed ; orders ; initial_ip ; created_at }
