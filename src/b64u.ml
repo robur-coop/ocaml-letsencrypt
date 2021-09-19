@@ -1,10 +1,15 @@
-open Astring
-
-let trim_leading_null s =
-  String.trim ~drop:(function '\000' -> true | _ -> false) s
+let rec trim_leading_null s =
+  if String.length s = 0 then
+    s
+  else if String.get s 0 = '\000' then
+    trim_leading_null (String.sub s 1 (String.length s - 1))
+  else
+    s
 
 (** byte reversing *)
-let rev s = Astring.String.(fold_left (fun acc c -> of_char c ^ acc) "" s)
+let rev s =
+  let slen = String.length s in
+  String.init slen (fun idx -> String.get s (slen - succ idx))
 
 let urlencode =
   Base64.encode_string ~pad:false ~alphabet:Base64.uri_safe_alphabet

@@ -1,5 +1,4 @@
 open Rresult.R.Infix
-open Astring
 
 let letsencrypt_production_url =
   Uri.of_string "https://acme-v02.api.letsencrypt.org/directory"
@@ -20,19 +19,19 @@ type json = J.t
 (* NOTE: hannes thinks that Json.to_string (`String {|foo"bar|}) looks suspicious *)
 let rec json_to_string ?(comma = ",") ?(colon = ":") : J.t -> string = function
   | `Null -> ""
-  | `String s -> Printf.sprintf {|"%s"|} (String.Ascii.escape s)
+  | `String s -> Printf.sprintf {|"%s"|} (String.escaped s)
   | `Bool b -> if b then "true" else "false"
   | `Float f -> string_of_float f
   | `Int i -> string_of_int i
   | `List l ->
     let s = List.map (json_to_string ~comma ~colon) l in
-     "[" ^ (String.concat ~sep:comma s) ^ "]"
+     "[" ^ (String.concat comma s) ^ "]"
   | `Assoc a ->
     let serialize_pair (key, value) =
       Printf.sprintf {|"%s"%s%s|} key colon (json_to_string ~comma ~colon value)
     in
     let s = List.map serialize_pair a in
-    Printf.sprintf {|{%s}|} (String.concat ~sep:comma s)
+    Printf.sprintf {|{%s}|} (String.concat comma s)
 
 let of_string s =
   try Ok (J.from_string s) with
@@ -548,8 +547,16 @@ module Error = struct
     Fmt.pf ppf "%s, detail: %s" (err_typ_to_string e.err_typ) e.detail
 
   let err_typ_of_string str =
-    match Astring.String.cut ~sep:"urn:ietf:params:acme:error:" str with
-    | Some ("", err) ->
+    let prefix = "urn:ietf:params:acme:error:" in
+    let plen = String.length prefix in
+    let err =
+      if String.length str > plen && String.(equal prefix (sub str 0 plen)) then
+        Some (String.sub str plen (String.length str - plen))
+      else
+        None
+    in
+    match err with
+    | Some err ->
       (* from https://www.iana.org/assignments/acme/acme.xhtml (20200209) *)
       begin match err with
         | "accountDoesNotExist" -> Ok `Account_does_not_exist
@@ -578,7 +585,7 @@ module Error = struct
         | "userActionRequired" -> Ok `User_action_required
         | s -> Rresult.R.error_msgf "unknown acme error typ %s" s
       end
-    | _ -> Rresult.R.error_msgf "unknown error type %s" str
+    | None -> Rresult.R.error_msgf "unknown error type %s" str
 
   let decode str =
     of_string str >>= fun json ->

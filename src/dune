@@ -3,4 +3,4 @@
 (library
  (name letsencrypt)
  (public_name letsencrypt)
- (libraries logs yojson lwt base64 mirage-crypto mirage-crypto-pk asn1-combinators x509 uri rresult astring))
+ (libraries logs yojson lwt base64 mirage-crypto mirage-crypto-pk asn1-combinators x509 uri rresult))
