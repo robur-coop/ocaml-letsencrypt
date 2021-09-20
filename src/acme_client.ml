@@ -46,7 +46,7 @@ let print_http =
   in
   http_solver solve
 
-let alpn_solver writef =
+let alpn_solver ?(key_type = `RSA) ?(bits = 2048) writef =
   (* on the ID-PE arc (from RFC 5280), 31 *)
   let id_pe_acme = Asn.OID.(base 1 3 <| 6 <| 1 <| 5 <| 5 <| 7 <| 1 <| 31)
   and alpn = "acme-tls/1"
@@ -57,8 +57,8 @@ let alpn_solver writef =
     enc hash
   in
   let solve_challenge ~token:_ ~key_authorization domain =
-    let priv = `RSA (Mirage_crypto_pk.Rsa.generate ~bits:2048 ()) in
     let open X509 in
+    let priv = Private_key.generate ~bits key_type in
     let solution = Primitives.sha256 key_authorization |> Cstruct.of_string in
     let name = Domain_name.to_string domain in
     let cn = Distinguished_name.CN name in

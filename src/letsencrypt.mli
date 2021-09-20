@@ -42,11 +42,15 @@ module Client: sig
       before continuing with ACME. *)
   val print_http : solver
 
-  (** [alpn_solver (fun domain ~alpn private_key certificate)] is a solver for
-      tls-alpn-01 challenes. The provided function should return [Ok ()] once
-      the TLS server at [domain] serves the self-signed [certificate] (with
-      [private_key]) under the ALPN [alpn] ("acme-tls/1"). *)
+  (** [alpn_solver ~key_type ~bits (fun domain ~alpn private_key certificate)]
+      is a solver for tls-alpn-01 challenges. The provided function should
+      return [Ok ()] once the TLS server at [domain] serves the self-signed
+      [certificate] (with [private_key]) under the ALPN [alpn] ("acme-tls/1").
+      The [key_type] and [bits] are used for the self-signed certificate, while
+      [bits] is only relevant if [key_type] is `RSA (default: RSA with 2048
+      bits). *)
   val alpn_solver :
+    ?key_type:X509.Key_type.t -> ?bits:int ->
     ([`host] Domain_name.t -> alpn:string -> X509.Private_key.t ->
      X509.Certificate.t -> (unit, [ `Msg of string ]) result Lwt.t) -> solver
 
