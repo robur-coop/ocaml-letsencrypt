@@ -18,6 +18,7 @@ depends: [
   "uri"
   "lwt" {>= "2.6.0"}
   "mirage-crypto"
+  "mirage-crypto-ec"
   "mirage-crypto-pk"
   "mirage-crypto-pk" {with-test & >= "0.8.9"}
   "x509" {>= "0.13.0"}

@@ -1,7 +1,6 @@
-open Mirage_crypto_pk
-
-let pub_of_z ~e ~n = Rsa.pub ~e ~n
-let pub_to_z (key : Rsa.pub) = Rsa.(key.e, key.n)
+let pub_of_z ~e ~n = Mirage_crypto_pk.Rsa.pub ~e ~n
+let pub_to_z (key : Mirage_crypto_pk.Rsa.pub) =
+  Mirage_crypto_pk.Rsa.(key.e, key.n)
 
 let sign hash priv data =
   let data = Mirage_crypto.Hash.digest hash (Cstruct.of_string data) in
