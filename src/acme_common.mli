@@ -14,9 +14,8 @@ module Jwk : sig
       Jwk is an implementation of the Json Web Key standard (RFC7638).
   *)
 
-  (** [key] identifies a key.
-      At present, this implementation only manages RSA keys. *)
-  type key = [ `Rsa of Mirage_crypto_pk.Rsa.pub ]
+  (** [key] identifies a key. *)
+  type key = X509.Public_key.t
 
   val thumbprint : key -> string
   (** [thumbprint key] produces the JWK thumbprint of [key]. *)
@@ -42,10 +41,10 @@ module Jws : sig
   }
 
   val encode_acme : ?kid_url:Uri.t -> data:string -> ?nonce:string -> Uri.t ->
-    Mirage_crypto_pk.Rsa.priv -> string
+    X509.Private_key.t -> string
 
   val encode : ?protected:(string * json) list -> data:string ->
-    ?nonce:string -> Mirage_crypto_pk.Rsa.priv -> string
+    ?nonce:string -> X509.Private_key.t -> string
 
   val decode : ?pub:Jwk.key -> string ->
     (header * string, [> `Msg of string ]) result

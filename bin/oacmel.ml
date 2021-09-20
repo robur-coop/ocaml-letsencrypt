@@ -30,56 +30,54 @@ let doit email endpoint account_key solver sleep csr =
   | Ok t -> Acme_cli.sign_certificate solver t sleep csr
   | Error e -> Lwt.return_error e
 
-let main _ rsa_pem csr_pem email solver acme_dir ip key endpoint cert zone =
+let main _ priv_pem csr_pem email solver acme_dir ip key endpoint cert zone =
   Mirage_crypto_rng_unix.initialize () ;
   let open Rresult.R.Infix in
   let r =
-    let rsa_pem, csr_pem, cert = Fpath.(v rsa_pem, v csr_pem, v cert) in
-    Bos.OS.File.read rsa_pem >>= fun rsa_pem ->
+    let priv_pem, csr_pem, cert = Fpath.(v priv_pem, v csr_pem, v cert) in
+    Bos.OS.File.read priv_pem >>= fun priv_pem ->
     Bos.OS.File.read csr_pem >>= fun csr_pem ->
     Bos.OS.File.exists cert >>= function
     | true -> Error (`Msg ("output file " ^ Fpath.to_string cert ^ " already exists"))
     | false ->
-      X509.Private_key.decode_pem (Cstruct.of_string rsa_pem) >>= function
-      | (`RSA account_key) -> (
-        X509.Signing_request.decode_pem (Cstruct.of_string csr_pem) >>= fun request ->
-        let solver =
-          match solver, acme_dir, ip, key with
-          | _, Some path, None, None -> (* using http solver! *)
-            Logs.app (fun m -> m "using http solver, writing to %s" path);
-            let solve_challenge _ ~prefix:_ ~token ~content =
-              (* now, resource has .well-known/acme-challenge prepended *)
-              let path = Fpath.(v path / token) in
-              Lwt_result.lift (Bos.OS.File.write path content)
-            in
-            Letsencrypt.Client.http_solver solve_challenge
-          | _, None, Some ip, Some (keyname, key) ->
-            Logs.app (fun m -> m "using dns solver, writing to %a" Ipaddr.V4.pp ip);
-            let ip' = Ipaddr_unix.V4.to_inet_addr ip in
-            let zone = match zone with
-              | None -> Domain_name.(host_exn (drop_label_exn ~amount:2 keyname))
-              | Some x -> Domain_name.(host_exn (of_string_exn x))
-            in
-            let random_id = Randomconv.int16 Mirage_crypto_rng.generate in
-            Letsencrypt_dns.nsupdate random_id Ptime_clock.now (dns_out ip') ~keyname key ~zone
-          | Some `Dns, None, None, None ->
-            Logs.app (fun m -> m "using dns solver");
-            Letsencrypt_dns.print_dns
-          | Some `Http, None, None, None ->
-            Logs.app (fun m -> m "using http solver");
-            Letsencrypt.Client.print_http
-          | Some `Alpn, None, None, None ->
-            Logs.app (fun m -> m "using alpn solver");
-            Letsencrypt.Client.print_alpn
-          | _ ->
-            invalid_arg "unsupported combination of acme_dir, ip, and key"
-        in
-        match Lwt_main.run (doit email endpoint account_key solver sleep request) with
-        | Error e -> Error e
-        | Ok t ->
-          Logs.info (fun m -> m "Certificates downloaded");
-          Bos.OS.File.write cert (Cstruct.to_string @@ X509.Certificate.encode_pem_multiple t) )
-      | _ -> Error (`Msg "Unsupported type of account-key")
+      X509.Private_key.decode_pem (Cstruct.of_string priv_pem) >>= fun account_key ->
+      X509.Signing_request.decode_pem (Cstruct.of_string csr_pem) >>= fun request ->
+      let solver =
+        match solver, acme_dir, ip, key with
+        | _, Some path, None, None -> (* using http solver! *)
+          Logs.app (fun m -> m "using http solver, writing to %s" path);
+          let solve_challenge _ ~prefix:_ ~token ~content =
+            (* now, resource has .well-known/acme-challenge prepended *)
+            let path = Fpath.(v path / token) in
+            Lwt_result.lift (Bos.OS.File.write path content)
+          in
+          Letsencrypt.Client.http_solver solve_challenge
+        | _, None, Some ip, Some (keyname, key) ->
+          Logs.app (fun m -> m "using dns solver, writing to %a" Ipaddr.V4.pp ip);
+          let ip' = Ipaddr_unix.V4.to_inet_addr ip in
+          let zone = match zone with
+            | None -> Domain_name.(host_exn (drop_label_exn ~amount:2 keyname))
+            | Some x -> Domain_name.(host_exn (of_string_exn x))
+          in
+          let random_id = Randomconv.int16 Mirage_crypto_rng.generate in
+          Letsencrypt_dns.nsupdate random_id Ptime_clock.now (dns_out ip') ~keyname key ~zone
+        | Some `Dns, None, None, None ->
+          Logs.app (fun m -> m "using dns solver");
+          Letsencrypt_dns.print_dns
+        | Some `Http, None, None, None ->
+          Logs.app (fun m -> m "using http solver");
+          Letsencrypt.Client.print_http
+        | Some `Alpn, None, None, None ->
+          Logs.app (fun m -> m "using alpn solver");
+          Letsencrypt.Client.print_alpn
+        | _ ->
+          invalid_arg "unsupported combination of acme_dir, ip, and key"
+      in
+      match Lwt_main.run (doit email endpoint account_key solver sleep request) with
+      | Error e -> Error e
+      | Ok t ->
+        Logs.info (fun m -> m "Certificates downloaded");
+        Bos.OS.File.write cert (Cstruct.to_string @@ X509.Certificate.encode_pem_multiple t)
   in
   match r with
   | Ok _ -> `Ok ()
@@ -94,8 +92,8 @@ let setup_log style_renderer level =
 
 open Cmdliner
 
-let rsa_pem =
-  let doc = "File containing the PEM-encoded RSA private key." in
+let priv_pem =
+  let doc = "File containing the PEM-encoded private key." in
   Arg.(value & opt string "account.pem" & info ["account-key"] ~docv:"FILE" ~doc)
 
 let csr_pem =
@@ -160,7 +158,7 @@ let info =
 
 let () =
   Printexc.record_backtrace true;
-  let cli = Term.(const main $ setup_log $ rsa_pem $ csr_pem $ email $ solver $ acme_dir $ ip $ key $ endpoint $ cert $ zone) in
+  let cli = Term.(const main $ setup_log $ priv_pem $ csr_pem $ email $ solver $ acme_dir $ ip $ key $ endpoint $ cert $ zone) in
   match Term.eval (cli, info) with
   | `Error _ -> exit 1
   | _        -> exit 0

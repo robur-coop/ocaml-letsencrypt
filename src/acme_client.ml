@@ -8,12 +8,12 @@ module Log = (val Logs.src_log src : Logs.LOG)
 let guard p err = if p then Ok () else err
 
 let key_authorization key token =
-  let pk = Primitives.pub_of_priv key in
-  let thumbprint = Jwk.thumbprint (`Rsa pk) in
+  let pk = X509.Private_key.public key in
+  let thumbprint = Jwk.thumbprint pk in
   Printf.sprintf "%s.%s" token thumbprint
 
 type t = {
-  account_key : Mirage_crypto_pk.Rsa.priv;
+  account_key : X509.Private_key.t;
   mutable next_nonce : string;
   d : Directory.t;
   account_url : Uri.t;

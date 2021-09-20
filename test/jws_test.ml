@@ -59,7 +59,7 @@ let expected_signature =
 
 let rsa_key () =
   match X509.Private_key.decode_pem (Cstruct.of_string testkey_pem) with
-  | Ok `RSA skey -> skey
+  | Ok `RSA skey -> `RSA skey
   | Ok _ -> assert_failure "unsupported key type"
   | Error `Msg e -> assert_failure e
 
@@ -77,7 +77,7 @@ let jws_encode_somedata () =
   let priv_key = rsa_key () in
   let data  = {|{"Msg":"Hello JWS"}|} in
   let nonce = "nonce" in
-  let protected = [ "jwk", Jwk.encode (`Rsa (Letsencrypt__Primitives.pub_of_priv priv_key)) ] in
+  let protected = [ "jwk", Jwk.encode (X509.Private_key.public priv_key) ] in
   let jws = Jws.encode ~protected ~data ~nonce priv_key in
   match json_of_string jws with
   | Ok json -> json
@@ -108,8 +108,8 @@ let test_decode_rsakey _ctx =
   match jws with
   | Error (`Msg e) -> assert_failure e
   | Ok (protected, _payload) ->
-    let pub = Letsencrypt__Primitives.pub_of_priv key in
-    assert_equal protected.Jws.jwk (Some (`Rsa pub))
+    let pub = X509.Private_key.public key in
+    assert_equal protected.Jws.jwk (Some pub)
 
 (* XXX. at this stage we probably wont the expected payload to be on some
  * global variable. *)
@@ -118,6 +118,12 @@ let test_decode_payload _ctx =
   | Error (`Msg e) -> assert_failure e
   | Ok (_, payload) ->
     assert_equal payload {|{"Msg":"Hello JWS"}|}
+
+let rfc7520_payload =
+  "It\xe2\x80\x99s a dangerous business, Frodo, going out your " ^
+  "door. You step onto the road, and if you don't keep your feet, " ^
+  "there\xe2\x80\x99s no knowing where you might be swept off " ^
+  "to."
 
 let rfc7520_4_1_rsa_pkcs_sign _ctx =
   let key =
@@ -138,21 +144,16 @@ let rfc7520_4_1_rsa_pkcs_sign _ctx =
          "s7pFc")
     in
     match Mirage_crypto_pk.Rsa.priv_of_primes ~e ~p ~q with
-    | Ok p -> p
+    | Ok p -> `RSA p
     | Error _ -> assert false
   in
-  let payload =
-    "It\xe2\x80\x99s a dangerous business, Frodo, going out your " ^
-    "door. You step onto the road, and if you don't keep your feet, " ^
-    "there\xe2\x80\x99s no knowing where you might be swept off " ^
-    "to."
-  and b64_payload =
+  let b64_payload =
     "SXTigJlzIGEgZGFuZ2Vyb3VzIGJ1c2luZXNzLCBGcm9kbywgZ29pbmcgb3V0IH" ^
     "lvdXIgZG9vci4gWW91IHN0ZXAgb250byB0aGUgcm9hZCwgYW5kIGlmIHlvdSBk" ^
     "b24ndCBrZWVwIHlvdXIgZmVldCwgdGhlcmXigJlzIG5vIGtub3dpbmcgd2hlcm" ^
     "UgeW91IG1pZ2h0IGJlIHN3ZXB0IG9mZiB0by4"
   in
-  assert_equal b64_payload (Letsencrypt__B64u.urlencode payload);
+  assert_equal b64_payload (Letsencrypt__B64u.urlencode rfc7520_payload);
   let protected = [ "kid", `String "bilbo.baggins@hobbiton.example" ] in
   let rfc_out =
     let signature =
@@ -172,8 +173,53 @@ let rfc7520_4_1_rsa_pkcs_sign _ctx =
         ("signature", `String signature) ;
       ])
   in
-  let signature = Jws.encode ~protected ~data:payload key in
+  let signature = Jws.encode ~protected ~data:rfc7520_payload key in
   assert_equal rfc_out signature
+
+let rfc7520_4_3_es512_sign _ctx =
+  let key =
+    let d =
+      match Letsencrypt__B64u.urldecode
+        ("AAhRON2r9cqXX1hg-RoI6R1tX5p2rUAYdmpHZoC1XNM56KtscrX6zb" ^
+         "KipQrCW9CGZH3T4ubpnoTKLDYJ_fF3_rJt")
+      with
+      | Ok d -> Cstruct.of_string d
+      | Error _ -> assert false
+    in
+    match Mirage_crypto_ec.P521.Dsa.priv_of_cstruct d with
+    | Ok k -> k
+    | Error _ -> assert false
+  in
+  let pub = Mirage_crypto_ec.P521.Dsa.pub_of_priv key in
+  let cs = Mirage_crypto_ec.P521.Dsa.pub_to_cstruct pub in
+  let x, y = Cstruct.split cs ~start:1 66 in
+  let rfc_x = "AHKZLLOsCOzz5cY97ewNUajB957y-C-U88c3v13nmGZx6sYl_oJXu9A5RkTKqjqvjyekWF-7ytDyRXYgCF5cj0Kt"
+  and rfc_y = "AdymlHvOiLxXkEhayXQnNCvDX4h9htZaCJN34kfmC6pV5OhQHiraVySsUdaQkAgDPrwQrJmbnX9cwlGfP-HqHZR1"
+  in
+  assert_equal rfc_x (Letsencrypt__B64u.urlencode (Cstruct.to_string x));
+  assert_equal rfc_y (Letsencrypt__B64u.urlencode (Cstruct.to_string y));
+  let rfc_signature =
+    "AE_R_YZCChjn4791jSQCrdPZCNYqHXCTZH0-JZGYNl" ^
+    "aAjP2kqaluUIIUnC9qvbu9Plon7KRTzoNEuT4Va2cmL1eJAQy3mt" ^
+    "PBu_u_sDDyYjnAMDxXPn7XrT0lw-kvAD890jl8e2puQens_IEKBp" ^
+    "HABlsbEPX6sFY8OcGDqoRuBomu9xQ2"
+  in
+  let data =
+    let prot_header =
+      `Assoc [ "alg", `String "ES512" ; "kid", `String "bilbo.baggins@hobbiton.example" ]
+      |> json_to_string |> Letsencrypt__B64u.urlencode
+    in
+    assert_equal prot_header "eyJhbGciOiJFUzUxMiIsImtpZCI6ImJpbGJvLmJhZ2dpbnNAaG9iYml0b24uZXhhbXBsZSJ9";
+    json_to_string ~comma:", " ~colon:": " (`Assoc [
+        ("protected", `String prot_header) ;
+        ("payload", `String (Letsencrypt__B64u.urlencode rfc7520_payload)) ;
+        ("signature", `String rfc_signature) ;
+      ])
+  in
+  match Jws.decode ~pub:(`P521 pub) data with
+  | Ok _ -> ()
+  | Error _ -> assert false
+
 
 let all_tests = [
   "test_encode_protected" >:: test_encode_protected;
@@ -185,4 +231,5 @@ let all_tests = [
   "test_decode_payload" >:: test_decode_payload;
 
   "rfc_7520_4_1_rsa_pkcs_sign" >:: rfc7520_4_1_rsa_pkcs_sign;
+  "rfc_7520_4_3_es512_sign" >:: rfc7520_4_3_es512_sign;
 ]

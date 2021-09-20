@@ -105,16 +105,26 @@ let maybe f = function
   | Some s -> f s >>| fun s' -> Some s'
 
 module Jwk = struct
-  type key = [ `Rsa of Mirage_crypto_pk.Rsa.pub ]
+  type key = X509.Public_key.t
 
   let encode = function
-    | `Rsa key ->
+    | `RSA key ->
       let e, n = Primitives.pub_to_z key in
       `Assoc [
         "e", `String (B64u.urlencodez e);
         "kty", `String "RSA";
         "n", `String (B64u.urlencodez n);
       ]
+    | `P521 key ->
+      let cs = Mirage_crypto_ec.P521.Dsa.pub_to_cstruct key in
+      let x, y = Cstruct.split cs ~start:1 66 in
+      `Assoc [
+        "kty", `String "EC";
+        "crv", `String "P-521";
+        "x", `String (B64u.urlencode (Cstruct.to_string x));
+        "y", `String (B64u.urlencode (Cstruct.to_string y));
+      ]
+    | _ -> assert false
 
   let decode_json json =
     string_val "kty" json >>= function
@@ -122,7 +132,21 @@ module Jwk = struct
       b64_z_val "e" json >>= fun e ->
       b64_z_val "n" json >>= fun n ->
       Primitives.pub_of_z ~e ~n >>= fun pub ->
-      Ok (`Rsa pub)
+      Ok (`RSA pub)
+    | "EC" ->
+      let four = Cstruct.create 1 in
+      Cstruct.set_uint8 four 0 0x04;
+      begin string_val "crv" json >>= function
+       | "P-521" ->
+         b64_string_val "x" json >>= fun x ->
+         b64_string_val "y" json >>= fun y ->
+         Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
+           (Mirage_crypto_ec.P521.Dsa.pub_of_cstruct
+             (Cstruct.concat [ four ; Cstruct.of_string x ; Cstruct.of_string y ]))
+         >>| fun pub ->
+         `P521 pub
+       | x -> Rresult.R.error_msgf "unknown EC curve %s" x
+      end
     | x -> Rresult.R.error_msgf "unknown key type %s" x
 
   let decode data =
@@ -143,15 +167,20 @@ module Jws = struct
   }
 
   let encode ?(protected = []) ~data ?nonce priv =
+    let alg, hash = match priv with
+      | `RSA _ -> "RS256", `SHA256
+      | `P521 _ -> "ES512", `SHA512
+      | _ -> assert false
+    in
     let protected =
       let n = match nonce with None -> [] | Some x -> [ "nonce", `String x ] in
-      `Assoc (("alg", `String "RS256") :: protected @ n) |> json_to_string
+      `Assoc (("alg", `String alg) :: protected @ n) |> json_to_string
     in
     let protected = protected |> B64u.urlencode in
     let payload = B64u.urlencode data in
     let signature =
       let m = protected ^ "." ^ payload in
-      Primitives.rs256_sign priv m |> B64u.urlencode
+      Primitives.sign hash priv m |> B64u.urlencode
     in
     let json =
       `Assoc [
@@ -165,7 +194,7 @@ module Jws = struct
   let encode_acme ?kid_url ~data ?nonce url priv =
     let kid_or_jwk =
       match kid_url with
-      | None -> "jwk", Jwk.encode (`Rsa (Primitives.pub_of_priv priv))
+      | None -> "jwk", Jwk.encode (X509.Private_key.public priv)
       | Some url -> "kid", `String (Uri.to_string url)
     in
     let url = "url", `String (Uri.to_string url) in
@@ -197,8 +226,9 @@ module Jws = struct
      | None, Some pub -> Ok pub
      | None, None -> Error (`Msg "no public key found")) >>= fun pub ->
     let verify m s =
-      match header.alg, pub with
-      | "RS256", `Rsa pub -> Primitives.rs256_verify pub m s
+      match header.alg with
+      | "RS256" -> Primitives.verify `SHA256 pub m s
+      | "ES512" -> Primitives.verify `SHA512 pub m s
       | _ -> false
     in
     let m = protected64 ^ "." ^ payload64 in

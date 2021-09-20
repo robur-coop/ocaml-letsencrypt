@@ -17,7 +17,7 @@ let e = match Letsencrypt__B64u.urldecodez e64 with
     Error (`Msg e) -> invalid_arg e | Ok e -> e
 
 let pub_key = match Letsencrypt__Primitives.pub_of_z ~e ~n with
-    Error (`Msg e) -> invalid_arg e | Ok p -> `Rsa p
+    Error (`Msg e) -> invalid_arg e | Ok p -> `RSA p
 
 let test_encode _ctx =
   let got = json_to_string (Jwk.encode pub_key) in
@@ -33,7 +33,8 @@ let decode_example =
   let maybe_pub = Printf.sprintf {|{"e":"%s","kty":"RSA","n":"%s"}|} e64 n64
                   |> Jwk.decode in
   match maybe_pub with
-  | Ok (`Rsa pub) -> pub
+  | Ok (`RSA pub) -> pub
+  | Ok _ -> assert false
   | Error (`Msg e) -> assert_failure e
 
 let test_decode _ctx =

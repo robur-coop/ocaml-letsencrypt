@@ -1,24 +1,27 @@
 open Mirage_crypto_pk
 
-let pub_of_priv = Rsa.pub_of_priv
 let pub_of_z ~e ~n = Rsa.pub ~e ~n
 let pub_to_z (key : Rsa.pub) = Rsa.(key.e, key.n)
 
-let rs256_sign priv data =
-  let data = Cstruct.of_string data in
-  let h = Mirage_crypto.Hash.SHA256.digest data in
-  let pkcs1_digest = X509.Certificate.encode_pkcs1_digest_info (`SHA256, h) in
-  Rsa.PKCS1.sig_encode ~key:priv pkcs1_digest |> Cstruct.to_string
+let sign hash priv data =
+  let data = Mirage_crypto.Hash.digest hash (Cstruct.of_string data) in
+  let ecdsa (r, s) = Cstruct.(to_string (append r s)) in
+  match priv with
+  | `RSA key -> Cstruct.to_string (Mirage_crypto_pk.Rsa.PKCS1.sign ~key ~hash (`Digest data))
+  | `P521 key -> ecdsa (Mirage_crypto_ec.P521.Dsa.sign ~key data)
+  | _ -> assert false
 
-let rs256_verify pub data signature =
-  let data = Cstruct.of_string data in
-  match Rsa.PKCS1.sig_decode ~key:pub (Cstruct.of_string signature) with
-  | Some pkcs1_digest ->
-     begin
-       match X509.Certificate.decode_pkcs1_digest_info pkcs1_digest with
-       | Ok (`SHA256, hash) -> hash = Mirage_crypto.Hash.SHA256.digest data
-       | _  -> false
-     end
+let verify hash pub data signature =
+  let data = Mirage_crypto.Hash.digest hash (Cstruct.of_string data)
+  and signature = Cstruct.of_string signature
+  in
+  match pub with
+  | `RSA key ->
+    let hashp h = h = hash in
+    Mirage_crypto_pk.Rsa.PKCS1.verify ~hashp ~key ~signature (`Digest data)
+  | `P521 key when Cstruct.length signature = 132 ->
+    let s = Cstruct.split signature 66 in
+    Mirage_crypto_ec.P521.Dsa.verify ~key s data
   | _ -> false
 
 let sha256 x =

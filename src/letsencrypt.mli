@@ -65,7 +65,7 @@ module Client: sig
         account is registered yet, a new account is created with contact
         information of [email]. The terms of service are agreed on. *)
     val initialise : ?ctx:Http.ctx -> endpoint:Uri.t -> ?email:string ->
-      Mirage_crypto_pk.Rsa.priv -> (t, [> `Msg of string ]) result Lwt.t
+      X509.Private_key.t -> (t, [> `Msg of string ]) result Lwt.t
 
     (** [sign_certificate ~ctx solver t sleep csr] orders a certificate for
         the names in the signing request [csr], and solves the requested
