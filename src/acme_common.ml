@@ -25,7 +25,7 @@ let rec json_to_string ?(comma = ",") ?(colon = ":") : J.t -> string = function
   | `Int i -> string_of_int i
   | `List l ->
     let s = List.map (json_to_string ~comma ~colon) l in
-     "[" ^ (String.concat comma s) ^ "]"
+    "[" ^ (String.concat comma s) ^ "]"
   | `Assoc a ->
     let serialize_pair (key, value) =
       Printf.sprintf {|"%s"%s%s|} key colon (json_to_string ~comma ~colon value)
@@ -124,7 +124,7 @@ module Jwk = struct
         "x", `String (B64u.urlencode (Cstruct.to_string x));
         "y", `String (B64u.urlencode (Cstruct.to_string y));
       ]
-     | `P256 key ->
+    | `P256 key ->
       let cs = Mirage_crypto_ec.P256.Dsa.pub_to_cstruct key in
       let x, y = Cstruct.split cs ~start:1 32 in
       `Assoc [
@@ -145,22 +145,22 @@ module Jwk = struct
     | "EC" ->
       let four = Cstruct.create 1 in
       Cstruct.set_uint8 four 0 0x04;
-      b64_string_val "x" json >>= fun x ->
-      b64_string_val "y" json >>= fun y ->
+      (b64_string_val "x" json >>| Cstruct.of_string) >>= fun x ->
+      (b64_string_val "y" json >>| Cstruct.of_string) >>= fun y ->
       begin string_val "crv" json >>= function
-       | "P-521" ->
-        Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
-           (Mirage_crypto_ec.P521.Dsa.pub_of_cstruct
-             (Cstruct.concat [ four ; Cstruct.of_string x ; Cstruct.of_string y ]))
-         >>| fun pub ->
-         `P521 pub
-       | "P-256" ->
-        Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
-           (Mirage_crypto_ec.P256.Dsa.pub_of_cstruct
-             (Cstruct.concat [ four ; Cstruct.of_string x ; Cstruct.of_string y ]))
-         >>| fun pub ->
-         `P256 pub
-       | x -> Rresult.R.error_msgf "unknown EC curve %s" x
+        | "P-521" ->
+          Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
+            (Mirage_crypto_ec.P521.Dsa.pub_of_cstruct
+               (Cstruct.concat [ four ; x ; y ]))
+          >>| fun pub ->
+          `P521 pub
+        | "P-256" ->
+          Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
+            (Mirage_crypto_ec.P256.Dsa.pub_of_cstruct
+               (Cstruct.concat [ four ; x ; y ]))
+          >>| fun pub ->
+          `P256 pub
+        | x -> Rresult.R.error_msgf "unknown EC curve %s" x
       end
     | x -> Rresult.R.error_msgf "unknown key type %s" x
 
@@ -262,7 +262,7 @@ module Directory = struct
     terms_of_service : Uri.t option;
     website : Uri.t option;
     caa_identities : string list option;
-    (* external_accoutn_required *)
+    (* external_account_required *)
   }
 
   let pp_meta ppf { terms_of_service ; website ; caa_identities } =
@@ -424,7 +424,6 @@ module Order = struct
     | "valid" -> Ok `Valid
     | "invalid" -> Ok `Invalid
     | s -> Rresult.R.error_msgf "unknown order status %s" s
-
 
   let decode str =
     of_string str >>= fun json ->
