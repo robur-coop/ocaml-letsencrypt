@@ -142,10 +142,10 @@ module Jws = struct
     jwk : Jwk.key option;
   }
 
-  let encode ?(protected = []) ~data ~nonce priv =
+  let encode ?(protected = []) ~data ?nonce priv =
     let protected =
-      `Assoc (("alg", `String "RS256") :: protected @ [ "nonce", `String nonce ])
-      |> json_to_string
+      let n = match nonce with None -> [] | Some x -> [ "nonce", `String x ] in
+      `Assoc (("alg", `String "RS256") :: protected @ n) |> json_to_string
     in
     let protected = protected |> B64u.urlencode in
     let payload = B64u.urlencode data in
@@ -153,10 +153,16 @@ module Jws = struct
       let m = protected ^ "." ^ payload in
       Primitives.rs256_sign priv m |> B64u.urlencode
     in
-    Printf.sprintf {|{"protected": "%s", "payload": "%s", "signature": "%s"}|}
-      protected payload signature
+    let json =
+      `Assoc [
+        "protected", `String protected ;
+        "payload", `String payload ;
+        "signature", `String signature
+      ]
+    in
+    json_to_string ~comma:", " ~colon:": " json
 
-  let encode_acme ?kid_url ~data ~nonce url priv =
+  let encode_acme ?kid_url ~data ?nonce url priv =
     let kid_or_jwk =
       match kid_url with
       | None -> "jwk", Jwk.encode (`Rsa (Primitives.pub_of_priv priv))
@@ -164,7 +170,7 @@ module Jws = struct
     in
     let url = "url", `String (Uri.to_string url) in
     let protected = [ kid_or_jwk ; url ] in
-    encode ~protected ~data ~nonce priv
+    encode ~protected ~data ?nonce priv
 
   let decode_header protected_header =
     of_string protected_header >>= fun protected ->

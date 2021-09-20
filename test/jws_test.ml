@@ -119,6 +119,61 @@ let test_decode_payload _ctx =
   | Ok (_, payload) ->
     assert_equal payload {|{"Msg":"Hello JWS"}|}
 
+let rfc7520_4_1_rsa_pkcs_sign _ctx =
+  let key =
+    (* Section 3.4, Figure 4 *)
+    let decode_z str =
+      match Letsencrypt__B64u.urldecodez str with Ok x -> x | Error _ -> assert false
+    in
+    let e = decode_z "AQAB"
+    and p = decode_z
+        ("3Slxg_DwTXJcb6095RoXygQCAZ5RnAvZlno1yhHtnUex_fp7AZ_9nR" ^
+         "aO7HX_-SFfGQeutao2TDjDAWU4Vupk8rw9JR0AzZ0N2fvuIAmr_WCsmG" ^
+         "peNqQnev1T7IyEsnh8UMt-n5CafhkikzhEsrmndH6LxOrvRJlsPp6Zv8" ^
+         "bUq0k")
+    and q = decode_z
+        ("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT" ^
+         "8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7an" ^
+         "V5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0" ^
+         "s7pFc")
+    in
+    match Mirage_crypto_pk.Rsa.priv_of_primes ~e ~p ~q with
+    | Ok p -> p
+    | Error _ -> assert false
+  in
+  let payload =
+    "It\xe2\x80\x99s a dangerous business, Frodo, going out your " ^
+    "door. You step onto the road, and if you don't keep your feet, " ^
+    "there\xe2\x80\x99s no knowing where you might be swept off " ^
+    "to."
+  and b64_payload =
+    "SXTigJlzIGEgZGFuZ2Vyb3VzIGJ1c2luZXNzLCBGcm9kbywgZ29pbmcgb3V0IH" ^
+    "lvdXIgZG9vci4gWW91IHN0ZXAgb250byB0aGUgcm9hZCwgYW5kIGlmIHlvdSBk" ^
+    "b24ndCBrZWVwIHlvdXIgZmVldCwgdGhlcmXigJlzIG5vIGtub3dpbmcgd2hlcm" ^
+    "UgeW91IG1pZ2h0IGJlIHN3ZXB0IG9mZiB0by4"
+  in
+  assert_equal b64_payload (Letsencrypt__B64u.urlencode payload);
+  let protected = [ "kid", `String "bilbo.baggins@hobbiton.example" ] in
+  let rfc_out =
+    let signature =
+      "MRjdkly7_-oTPTS3AXP41iQIGKa80A0ZmTuV5MEaHoxnW2e5CZ5NlKtainoFmK" ^
+      "ZopdHM1O2U4mwzJdQx996ivp83xuglII7PNDi84wnB-BDkoBwA78185hX-Es4J" ^
+      "IwmDLJK3lfWRa-XtL0RnltuYv746iYTh_qHRD68BNt1uSNCrUCTJDt5aAE6x8w" ^
+      "W1Kt9eRo4QPocSadnHXFxnt8Is9UzpERV0ePPQdLuW3IS_de3xyIrDaLGdjluP" ^
+      "xUAhb6L2aXic1U12podGU0KLUQSE_oI-ZnmKJ3F4uOZDnd6QZWJushZ41Axf_f" ^
+      "cIe8u9ipH84ogoree7vjbU5y18kDquDg"
+    and prot_header =
+      "eyJhbGciOiJSUzI1NiIsImtpZCI6ImJpbGJvLmJhZ2dpbnNAaG9iYml0b24uZX" ^
+      "hhbXBsZSJ9"
+    in
+    json_to_string ~comma:", " ~colon:": " (`Assoc [
+        ("protected", `String prot_header) ;
+        ("payload", `String b64_payload) ;
+        ("signature", `String signature) ;
+      ])
+  in
+  let signature = Jws.encode ~protected ~data:payload key in
+  assert_equal rfc_out signature
 
 let all_tests = [
   "test_encode_protected" >:: test_encode_protected;
@@ -128,4 +183,6 @@ let all_tests = [
   "test_decode_null" >:: test_decode_null;
   "test_decode_rsakey" >:: test_decode_rsakey;
   "test_decode_payload" >:: test_decode_payload;
+
+  "rfc_7520_4_1_rsa_pkcs_sign" >:: rfc7520_4_1_rsa_pkcs_sign;
 ]

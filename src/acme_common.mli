@@ -41,13 +41,14 @@ module Jws : sig
     jwk : Jwk.key option;
   }
 
-  val encode_acme : ?kid_url:Uri.t -> data:string -> nonce:string -> Uri.t ->
+  val encode_acme : ?kid_url:Uri.t -> data:string -> ?nonce:string -> Uri.t ->
     Mirage_crypto_pk.Rsa.priv -> string
 
-  val encode : ?protected:(string * json) list -> data:string -> nonce:string ->
-    Mirage_crypto_pk.Rsa.priv -> string
+  val encode : ?protected:(string * json) list -> data:string ->
+    ?nonce:string -> Mirage_crypto_pk.Rsa.priv -> string
 
-  val decode : ?pub:Jwk.key -> string -> (header * string, [> `Msg of string ]) result
+  val decode : ?pub:Jwk.key -> string ->
+    (header * string, [> `Msg of string ]) result
 end
 
 module Directory : sig
