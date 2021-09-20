@@ -86,8 +86,6 @@ end
      -- connection failures / timeouts
      -- cohttp uses Lwt exceptions at times
    - make next_nonce immutable, and pass it through
-   - SECURITY verify the TLS certificate provided by the server!
-   - ES256 algorithm (only RS256 is there)
    - errors with "subproblems" (deal with them? decode them?)
    - "SHOULD user interaction" to accept terms of service
    - external account binding (data in json objects)

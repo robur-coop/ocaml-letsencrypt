@@ -497,9 +497,14 @@ let sign_certificate ?ctx solver cli sleep csr =
   (* but as well need to check that we're able to solve authorizations for the names *)
   new_order ?ctx solver cli sleep csr
 
+let supported_key = function
+  | `RSA _ | `P256 _ | `P384 _ | `P521 _ -> Ok ()
+  | _ -> Error (`Msg "unsupported key type")
+
 let initialise ?ctx ~endpoint ?email account_key =
   let open Lwt_result.Infix in
   (* create a new client *)
+  Lwt_result.lift (supported_key account_key) >>= fun () ->
   discover ?ctx endpoint >>= fun d ->
   Log.info (fun m -> m "discovered directory %a" Directory.pp d);
   get_nonce ?ctx d.new_nonce >>= fun nonce ->

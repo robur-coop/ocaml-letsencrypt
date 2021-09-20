@@ -115,20 +115,29 @@ module Jwk = struct
         "kty", `String "RSA";
         "n", `String (B64u.urlencodez n);
       ]
-    | `P521 key ->
-      let cs = Mirage_crypto_ec.P521.Dsa.pub_to_cstruct key in
-      let x, y = Cstruct.split cs ~start:1 66 in
-      `Assoc [
-        "crv", `String "P-521";
-        "kty", `String "EC";
-        "x", `String (B64u.urlencode (Cstruct.to_string x));
-        "y", `String (B64u.urlencode (Cstruct.to_string y));
-      ]
     | `P256 key ->
       let cs = Mirage_crypto_ec.P256.Dsa.pub_to_cstruct key in
       let x, y = Cstruct.split cs ~start:1 32 in
       `Assoc [
         "crv", `String "P-256";
+        "kty", `String "EC";
+        "x", `String (B64u.urlencode (Cstruct.to_string x));
+        "y", `String (B64u.urlencode (Cstruct.to_string y));
+      ]
+    | `P384 key ->
+      let cs = Mirage_crypto_ec.P384.Dsa.pub_to_cstruct key in
+      let x, y = Cstruct.split cs ~start:1 48 in
+      `Assoc [
+        "crv", `String "P-256";
+        "kty", `String "EC";
+        "x", `String (B64u.urlencode (Cstruct.to_string x));
+        "y", `String (B64u.urlencode (Cstruct.to_string y));
+      ]
+    | `P521 key ->
+      let cs = Mirage_crypto_ec.P521.Dsa.pub_to_cstruct key in
+      let x, y = Cstruct.split cs ~start:1 66 in
+      `Assoc [
+        "crv", `String "P-521";
         "kty", `String "EC";
         "x", `String (B64u.urlencode (Cstruct.to_string x));
         "y", `String (B64u.urlencode (Cstruct.to_string y));
@@ -148,18 +157,24 @@ module Jwk = struct
       (b64_string_val "x" json >>| Cstruct.of_string) >>= fun x ->
       (b64_string_val "y" json >>| Cstruct.of_string) >>= fun y ->
       begin string_val "crv" json >>= function
-        | "P-521" ->
-          Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
-            (Mirage_crypto_ec.P521.Dsa.pub_of_cstruct
-               (Cstruct.concat [ four ; x ; y ]))
-          >>| fun pub ->
-          `P521 pub
         | "P-256" ->
           Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
             (Mirage_crypto_ec.P256.Dsa.pub_of_cstruct
                (Cstruct.concat [ four ; x ; y ]))
           >>| fun pub ->
           `P256 pub
+        | "P-384" ->
+          Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
+            (Mirage_crypto_ec.P384.Dsa.pub_of_cstruct
+               (Cstruct.concat [ four ; x ; y ]))
+          >>| fun pub ->
+          `P384 pub
+        | "P-521" ->
+          Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
+            (Mirage_crypto_ec.P521.Dsa.pub_of_cstruct
+               (Cstruct.concat [ four ; x ; y ]))
+          >>| fun pub ->
+          `P521 pub
         | x -> Rresult.R.error_msgf "unknown EC curve %s" x
       end
     | x -> Rresult.R.error_msgf "unknown key type %s" x
@@ -184,8 +199,9 @@ module Jws = struct
   let encode ?(protected = []) ~data ?nonce priv =
     let alg, hash = match priv with
       | `RSA _ -> "RS256", `SHA256
-      | `P521 _ -> "ES512", `SHA512
       | `P256 _ -> "ES256", `SHA256
+      | `P384 _ -> "ES384", `SHA384
+      | `P521 _ -> "ES512", `SHA512
       | _ -> assert false
     in
     let protected =
@@ -244,8 +260,9 @@ module Jws = struct
     let verify m s =
       match header.alg with
       | "RS256" -> Primitives.verify `SHA256 pub m s
-      | "ES512" -> Primitives.verify `SHA512 pub m s
       | "ES256" -> Primitives.verify `SHA256 pub m s
+      | "ES384" -> Primitives.verify `SHA384 pub m s
+      | "ES512" -> Primitives.verify `SHA512 pub m s
       | _ -> false
     in
     let m = protected64 ^ "." ^ payload64 in
