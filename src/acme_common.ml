@@ -124,6 +124,15 @@ module Jwk = struct
         "x", `String (B64u.urlencode (Cstruct.to_string x));
         "y", `String (B64u.urlencode (Cstruct.to_string y));
       ]
+     | `P256 key ->
+      let cs = Mirage_crypto_ec.P256.Dsa.pub_to_cstruct key in
+      let x, y = Cstruct.split cs ~start:1 32 in
+      `Assoc [
+        "kty", `String "EC";
+        "crv", `String "P-256";
+        "x", `String (B64u.urlencode (Cstruct.to_string x));
+        "y", `String (B64u.urlencode (Cstruct.to_string y));
+      ]
     | _ -> assert false
 
   let decode_json json =
@@ -136,15 +145,21 @@ module Jwk = struct
     | "EC" ->
       let four = Cstruct.create 1 in
       Cstruct.set_uint8 four 0 0x04;
+      b64_string_val "x" json >>= fun x ->
+      b64_string_val "y" json >>= fun y ->
       begin string_val "crv" json >>= function
        | "P-521" ->
-         b64_string_val "x" json >>= fun x ->
-         b64_string_val "y" json >>= fun y ->
-         Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
+        Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
            (Mirage_crypto_ec.P521.Dsa.pub_of_cstruct
              (Cstruct.concat [ four ; Cstruct.of_string x ; Cstruct.of_string y ]))
          >>| fun pub ->
          `P521 pub
+       | "P-256" ->
+        Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
+           (Mirage_crypto_ec.P256.Dsa.pub_of_cstruct
+             (Cstruct.concat [ four ; Cstruct.of_string x ; Cstruct.of_string y ]))
+         >>| fun pub ->
+         `P256 pub
        | x -> Rresult.R.error_msgf "unknown EC curve %s" x
       end
     | x -> Rresult.R.error_msgf "unknown key type %s" x
@@ -170,6 +185,7 @@ module Jws = struct
     let alg, hash = match priv with
       | `RSA _ -> "RS256", `SHA256
       | `P521 _ -> "ES512", `SHA512
+      | `P256 _ -> "ES256", `SHA256
       | _ -> assert false
     in
     let protected =
@@ -229,6 +245,7 @@ module Jws = struct
       match header.alg with
       | "RS256" -> Primitives.verify `SHA256 pub m s
       | "ES512" -> Primitives.verify `SHA512 pub m s
+      | "ES256" -> Primitives.verify `SHA256 pub m s
       | _ -> false
     in
     let m = protected64 ^ "." ^ payload64 in

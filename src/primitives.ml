@@ -9,6 +9,7 @@ let sign hash priv data =
   match priv with
   | `RSA key -> Cstruct.to_string (Mirage_crypto_pk.Rsa.PKCS1.sign ~key ~hash (`Digest data))
   | `P521 key -> ecdsa (Mirage_crypto_ec.P521.Dsa.sign ~key data)
+  | `P256 key -> ecdsa (Mirage_crypto_ec.P256.Dsa.sign ~key data)
   | _ -> assert false
 
 let verify hash pub data signature =
@@ -22,6 +23,9 @@ let verify hash pub data signature =
   | `P521 key when Cstruct.length signature = 132 ->
     let s = Cstruct.split signature 66 in
     Mirage_crypto_ec.P521.Dsa.verify ~key s data
+  | `P256 key when Cstruct.length signature = 64 ->
+    let s = Cstruct.split signature 32 in
+    Mirage_crypto_ec.P256.Dsa.verify ~key s data
   | _ -> false
 
 let sha256 x =
