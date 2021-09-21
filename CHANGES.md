@@ -1,3 +1,13 @@
+# v0.4.0 (2021-09-21)
+
+* support EC (P-256, P-384, P-521) account keys (@reynir @hannesm)
+  (reported in #24 by @dinosaure)
+* allow key_type to be passed into the alpn_solver (@hannesm)
+* add RFC 7520 test cases (@reynir @hannesm)
+* remove astring dependency (@hannesm)
+* bugfix: "orders" field in account is Uri.t option, not a list (@hannesm)
+  (reported in #27 by @torinnd)
+
 # v0.3.0 (2021-07-19)
 
 Reduce dependency cone (#26, @dinosaure & @hannesm)
