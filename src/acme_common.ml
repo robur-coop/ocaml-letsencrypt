@@ -128,7 +128,7 @@ module Jwk = struct
       let cs = Mirage_crypto_ec.P384.Dsa.pub_to_cstruct key in
       let x, y = Cstruct.split cs ~start:1 48 in
       `Assoc [
-        "crv", `String "P-256";
+        "crv", `String "P-384";
         "kty", `String "EC";
         "x", `String (B64u.urlencode (Cstruct.to_string x));
         "y", `String (B64u.urlencode (Cstruct.to_string y));
