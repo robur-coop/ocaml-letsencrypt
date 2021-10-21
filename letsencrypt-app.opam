@@ -16,7 +16,7 @@ depends: [
   "cmdliner"
   "cohttp-lwt-unix" {>= "1.0.0"}
   "logs"
-  "fmt"
+  "fmt" {>= "0.8.7"}
   "lwt" {>= "2.6.0"}
   "mirage-crypto-rng"
   "ptime"

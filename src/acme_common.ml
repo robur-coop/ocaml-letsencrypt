@@ -284,9 +284,9 @@ module Directory = struct
 
   let pp_meta ppf { terms_of_service ; website ; caa_identities } =
     Fmt.pf ppf "terms of service: %a@,website %a@,caa identities %a"
-      Fmt.(option ~none:(unit "no tos") Uri.pp_hum) terms_of_service
-      Fmt.(option ~none:(unit "no website") Uri.pp_hum) website
-      Fmt.(option ~none:(unit "no CAA") (list ~sep:(unit ", ") string))
+      Fmt.(option ~none:(any "no tos") Uri.pp_hum) terms_of_service
+      Fmt.(option ~none:(any "no website") Uri.pp_hum) website
+      Fmt.(option ~none:(any "no CAA") (list ~sep:(any ", ") string))
       caa_identities
 
   let meta_of_json = function
@@ -310,9 +310,9 @@ module Directory = struct
   let pp ppf dir =
     Fmt.pf ppf "new nonce %a@,new account %a@,new order %a@,new authz %a@,revoke cert %a@,key change %a@,meta %a"
       Uri.pp_hum dir.new_nonce Uri.pp_hum dir.new_account Uri.pp_hum dir.new_order
-      Fmt.(option ~none:(unit "no authz") Uri.pp_hum) dir.new_authz
+      Fmt.(option ~none:(any "no authz") Uri.pp_hum) dir.new_authz
       Uri.pp_hum dir.revoke_cert Uri.pp_hum dir.key_change
-      Fmt.(option ~none:(unit "no meta") pp_meta) dir.meta
+      Fmt.(option ~none:(any "no meta") pp_meta) dir.meta
 
   let decode s =
     of_string s >>= fun json ->
@@ -347,12 +347,12 @@ module Account = struct
   let pp ppf a =
     Fmt.pf ppf "status %a@,contact %a@,terms of service agreed %a@,orders %a@,initial IP %a@,created %a"
       pp_status a.account_status
-      Fmt.(option ~none:(unit "no contact") (list ~sep:(unit ", ") string))
+      Fmt.(option ~none:(any "no contact") (list ~sep:(any ", ") string))
       a.contact
-      Fmt.(option ~none:(unit "unknown") bool) a.terms_of_service_agreed
-      Fmt.(option ~none:(unit "unknown") Uri.pp_hum) a.orders
-      Fmt.(option ~none:(unit "unknown") string) a.initial_ip
-      Fmt.(option ~none:(unit "unknown") (Ptime.pp_rfc3339 ())) a.created_at
+      Fmt.(option ~none:(any "unknown") bool) a.terms_of_service_agreed
+      Fmt.(option ~none:(any "unknown") Uri.pp_hum) a.orders
+      Fmt.(option ~none:(any "unknown") string) a.initial_ip
+      Fmt.(option ~none:(any "unknown") (Ptime.pp_rfc3339 ())) a.created_at
 
   let status_of_string = function
     | "valid" -> Ok `Valid
@@ -383,7 +383,7 @@ type id_type = [ `Dns ]
 
 let pp_id_type ppf = function `Dns -> Fmt.string ppf "dns"
 
-let pp_id = Fmt.(pair ~sep:(unit " - ") pp_id_type string)
+let pp_id = Fmt.(pair ~sep:(any " - ") pp_id_type string)
 
 let id_type_of_string = function
   | "dns" -> Ok `Dns
@@ -425,14 +425,14 @@ module Order = struct
   let pp ppf o =
     Fmt.pf ppf "status %a@,expires %a@,identifiers %a@,not_before %a@,not_after %a@,error %a@,authorizations %a@,finalize %a@,certificate %a"
       pp_status o.order_status
-      Fmt.(option ~none:(unit "no") (Ptime.pp_rfc3339 ())) o.expires
-      Fmt.(list ~sep:(unit ", ") pp_id) o.identifiers
-      Fmt.(option ~none:(unit "no") (Ptime.pp_rfc3339 ())) o.not_before
-      Fmt.(option ~none:(unit "no") (Ptime.pp_rfc3339 ())) o.not_after
-      Fmt.(option ~none:(unit "no error") J.pp) o.error
-      Fmt.(list ~sep:(unit ", ") Uri.pp_hum) o.authorizations
+      Fmt.(option ~none:(any "no") (Ptime.pp_rfc3339 ())) o.expires
+      Fmt.(list ~sep:(any ", ") pp_id) o.identifiers
+      Fmt.(option ~none:(any "no") (Ptime.pp_rfc3339 ())) o.not_before
+      Fmt.(option ~none:(any "no") (Ptime.pp_rfc3339 ())) o.not_after
+      Fmt.(option ~none:(any "no error") J.pp) o.error
+      Fmt.(list ~sep:(any ", ") Uri.pp_hum) o.authorizations
       Uri.pp_hum o.finalize
-      Fmt.(option ~none:(unit "no") Uri.pp_hum) o.certificate
+      Fmt.(option ~none:(any "no") Uri.pp_hum) o.certificate
 
   let status_of_string = function
     | "pending" -> Ok `Pending
@@ -495,8 +495,8 @@ module Challenge = struct
       pp_typ c.challenge_typ
       c.token
       Uri.pp_hum c.url
-      Fmt.(option ~none:(unit "no") (Ptime.pp_rfc3339 ())) c.validated
-      Fmt.(option ~none:(unit "no error") J.pp) c.error
+      Fmt.(option ~none:(any "no") (Ptime.pp_rfc3339 ())) c.validated
+      Fmt.(option ~none:(any "no error") J.pp) c.error
 
   let status_of_string = function
     | "pending" -> Ok `Pending
@@ -538,8 +538,8 @@ module Authorization = struct
   let pp ppf a =
     Fmt.pf ppf "status %a@,identifier %a@,expires %a@,challenges %a@,wildcard %a"
       pp_status a.authorization_status pp_id a.identifier
-      Fmt.(option ~none:(unit "no") (Ptime.pp_rfc3339 ())) a.expires
-      Fmt.(list ~sep:(unit ",") Challenge.pp) a.challenges
+      Fmt.(option ~none:(any "no") (Ptime.pp_rfc3339 ())) a.expires
+      Fmt.(list ~sep:(any ",") Challenge.pp) a.challenges
       Fmt.bool a.wildcard
 
   let status_of_string = function

@@ -50,12 +50,13 @@ let nsupdate ?proto id now out ?recv ~zone ~keyname key =
           | Error e -> Error e
           | Ok data ->
             match Dns_tsig.decode_and_verify (now ()) key keyname ~mac data with
-            | Error e -> Error (`Msg (Fmt.strf "decode and verify error %a" Dns_tsig.pp_e e))
+            | Error e ->
+              Error (`Msg (Fmt.str "decode and verify error %a" Dns_tsig.pp_e e))
             | Ok (res, _, _) ->
               match Packet.reply_matches_request ~request:packet res with
               | Ok _ -> Ok ()
               | Error mismatch ->
-                Error (`Msg (Fmt.strf "error %a expected reply to %a, got %a"
+                Error (`Msg (Fmt.str "error %a expected reply to %a, got %a"
                                Packet.pp_mismatch mismatch
                                Packet.pp packet Packet.pp res))
   in
