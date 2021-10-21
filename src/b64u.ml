@@ -20,6 +20,5 @@ let urldecode s =
 let urlencodez z = urlencode (trim_leading_null (rev (Z.to_bits z)))
 
 let urldecodez z64 =
-  let open Rresult.R.Infix in
-  urldecode z64 >>| fun bits ->
-  Z.of_bits (rev bits)
+  Result.map (fun bits -> Z.of_bits (rev bits)) (urldecode z64)
+

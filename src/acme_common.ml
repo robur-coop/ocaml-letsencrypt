@@ -1,13 +1,12 @@
-open Rresult.R.Infix
-
 let letsencrypt_production_url =
   Uri.of_string "https://acme-v02.api.letsencrypt.org/directory"
 
 let letsencrypt_staging_url =
   Uri.of_string "https://acme-staging-v02.api.letsencrypt.org/directory"
 
-let sha256_and_base64 a =
-  Primitives.sha256 a |> B64u.urlencode
+let sha256_and_base64 a = Primitives.sha256 a |> B64u.urlencode
+
+let ( let* ) = Result.bind
 
 module J = Yojson.Basic
 
@@ -38,7 +37,7 @@ let of_string s =
     Yojson.Json_error str -> Error (`Msg str)
 
 let err_msg typ name json =
-  Rresult.R.error_msgf "couldn't find %s %s in %s" typ name (J.to_string json)
+  Error (`Msg (Fmt.str "couldn't find %s %s in %s" typ name (J.to_string json)))
 
 (* decoders *)
 let string_val key json =
@@ -58,12 +57,12 @@ let json_val member json =
   | _ -> err_msg "json object" member json
 
 let b64_z_val member json =
-  string_val member json >>= fun s ->
-  Rresult.R.open_error_msg (B64u.urldecodez s)
+  let* s = string_val member json in
+  B64u.urldecodez s
 
 let b64_string_val member json =
-  string_val member json >>= fun s ->
-  Rresult.R.open_error_msg (B64u.urldecode s)
+  let* s = string_val member json in
+  B64u.urldecode s
 
 let assoc_val key json =
   match J.Util.member key json with
@@ -97,12 +96,14 @@ let decode_ptime str =
   match Ptime.of_rfc3339 str with
   | Ok (ts, _, _) -> Ok ts
   | Error `RFC3339 (_, err) ->
-    Rresult.R.error_msgf "couldn't parse %s as rfc3339 %a"
-      str Ptime.pp_rfc3339_error err
+    Error (`Msg (Fmt.str "couldn't parse %s as rfc3339 %a"
+                   str Ptime.pp_rfc3339_error err))
 
 let maybe f = function
   | None -> Ok None
-  | Some s -> f s >>| fun s' -> Some s'
+  | Some s ->
+    let* s' = f s in
+    Ok (Some s')
 
 module Jwk = struct
   type key = X509.Public_key.t
@@ -145,42 +146,50 @@ module Jwk = struct
     | _ -> assert false
 
   let decode_json json =
-    string_val "kty" json >>= function
+    let* kty = string_val "kty" json in
+    match kty with
     | "RSA" ->
-      b64_z_val "e" json >>= fun e ->
-      b64_z_val "n" json >>= fun n ->
-      Primitives.pub_of_z ~e ~n >>= fun pub ->
+      let* e = b64_z_val "e" json in
+      let* n = b64_z_val "n" json in
+      let* pub = Primitives.pub_of_z ~e ~n in
       Ok (`RSA pub)
     | "EC" ->
       let four = Cstruct.create 1 in
       Cstruct.set_uint8 four 0 0x04;
-      (b64_string_val "x" json >>| Cstruct.of_string) >>= fun x ->
-      (b64_string_val "y" json >>| Cstruct.of_string) >>= fun y ->
-      begin string_val "crv" json >>= function
+      let* x = Result.map Cstruct.of_string (b64_string_val "x" json) in
+      let* y = Result.map Cstruct.of_string (b64_string_val "y" json) in
+      let* crv = string_val "crv" json in
+      begin match crv with
         | "P-256" ->
-          Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
-            (Mirage_crypto_ec.P256.Dsa.pub_of_cstruct
-               (Cstruct.concat [ four ; x ; y ]))
-          >>| fun pub ->
-          `P256 pub
+          let* pub =
+            Result.map_error
+              (fun e -> `Msg (Fmt.to_to_string Mirage_crypto_ec.pp_error e))
+              (Mirage_crypto_ec.P256.Dsa.pub_of_cstruct
+                 (Cstruct.concat [ four ; x ; y ]))
+          in
+          Ok (`P256 pub)
         | "P-384" ->
-          Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
-            (Mirage_crypto_ec.P384.Dsa.pub_of_cstruct
-               (Cstruct.concat [ four ; x ; y ]))
-          >>| fun pub ->
-          `P384 pub
+          let* pub =
+            Result.map_error
+              (fun e -> `Msg (Fmt.to_to_string Mirage_crypto_ec.pp_error e))
+              (Mirage_crypto_ec.P384.Dsa.pub_of_cstruct
+                 (Cstruct.concat [ four ; x ; y ]))
+          in
+          Ok (`P384 pub)
         | "P-521" ->
-          Rresult.R.error_to_msg ~pp_error:Mirage_crypto_ec.pp_error
-            (Mirage_crypto_ec.P521.Dsa.pub_of_cstruct
-               (Cstruct.concat [ four ; x ; y ]))
-          >>| fun pub ->
-          `P521 pub
-        | x -> Rresult.R.error_msgf "unknown EC curve %s" x
+          let* pub =
+            Result.map_error
+              (fun e -> `Msg (Fmt.to_to_string Mirage_crypto_ec.pp_error e))
+              (Mirage_crypto_ec.P521.Dsa.pub_of_cstruct
+                 (Cstruct.concat [ four ; x ; y ]))
+          in
+          Ok (`P521 pub)
+        | x -> Error (`Msg (Fmt.str "unknown EC curve %s" x))
       end
-    | x -> Rresult.R.error_msgf "unknown key type %s" x
+    | x -> Error (`Msg (Fmt.str "unknown key type %s" x))
 
   let decode data =
-    of_string data >>= fun json ->
+    let* json = of_string data in
     decode_json json
 
   let thumbprint pub_key =
@@ -234,29 +243,32 @@ module Jws = struct
     encode ~protected ~data ?nonce priv
 
   let decode_header protected_header =
-    of_string protected_header >>= fun protected ->
-    (match json_val "jwk" protected with
-     | Ok key -> Jwk.decode_json key >>| fun k -> Some k
-     | Error _ -> Ok None) >>= fun jwk ->
-    string_val "alg" protected >>= fun alg ->
-    let nonce = match string_val "nonce" protected with
-      | Ok nonce -> Some nonce
-      | Error _ -> None
+    let* protected = of_string protected_header in
+    let* jwk =
+      match json_val "jwk" protected with
+      | Ok key ->
+        let* k = Jwk.decode_json key in
+        Ok (Some k)
+      | Error _ -> Ok None
     in
+    let* alg = string_val "alg" protected in
+    let nonce = Result.to_option (string_val "nonce" protected) in
     Ok { alg ; nonce ; jwk }
 
   let decode ?pub data =
-    of_string data >>= fun jws ->
-    string_val "protected" jws >>= fun protected64 ->
-    string_val "payload" jws >>= fun payload64 ->
-    b64_string_val "signature" jws >>= fun signature ->
-    Rresult.R.open_error_msg (B64u.urldecode protected64) >>= fun protected ->
-    decode_header protected >>= fun header ->
-    Rresult.R.open_error_msg (B64u.urldecode payload64) >>= fun payload ->
-    (match pub, header.jwk with
-     | Some pub, _ -> Ok pub
-     | None, Some pub -> Ok pub
-     | None, None -> Error (`Msg "no public key found")) >>= fun pub ->
+    let* jws = of_string data in
+    let* protected64 = string_val "protected" jws in
+    let* payload64 = string_val "payload" jws in
+    let* signature = b64_string_val "signature" jws in
+    let* protected = B64u.urldecode protected64 in
+    let* header = decode_header protected in
+    let* payload = B64u.urldecode payload64 in
+    let* pub =
+      match pub, header.jwk with
+      | Some pub, _ -> Ok pub
+      | None, Some pub -> Ok pub
+      | None, None -> Error (`Msg "no public key found")
+    in
     let verify m s =
       match header.alg with
       | "RS256" -> Primitives.verify `SHA256 pub m s
@@ -269,7 +281,7 @@ module Jws = struct
     if verify m signature then
       Ok (header, payload)
     else
-      Rresult.R.error_msgf "signature verification failed"
+      Error (`Msg "signature verification failed")
 end
 
 let uri s = Ok (Uri.of_string s)
@@ -291,10 +303,16 @@ module Directory = struct
 
   let meta_of_json = function
     | `Assoc _ as json ->
-      opt_string_val "termsOfService" json >>= maybe uri >>= fun terms_of_service ->
-      opt_string_val "website" json >>= maybe uri >>= fun website ->
-      opt_string_list "caaIdentities" json >>| fun caa_identities ->
-      Some { terms_of_service ; website ; caa_identities }
+      let* terms_of_service =
+        let* tos = opt_string_val "termsOfService" json in
+        maybe uri tos
+      in
+      let* website =
+        let* w = opt_string_val "website" json in
+        maybe uri w
+      in
+      let* caa_identities = opt_string_list "caaIdentities" json in
+      Ok (Some { terms_of_service ; website ; caa_identities })
     | _ -> Ok None
 
   type t = {
@@ -315,16 +333,37 @@ module Directory = struct
       Fmt.(option ~none:(any "no meta") pp_meta) dir.meta
 
   let decode s =
-    of_string s >>= fun json ->
-    string_val "newNonce" json >>= uri >>= fun new_nonce ->
-    string_val "newAccount" json >>= uri >>= fun new_account ->
-    string_val "newOrder" json >>= uri >>= fun new_order ->
-    opt_string_val "newAuthz" json >>= maybe uri >>= fun new_authz ->
-    string_val "revokeCert" json >>= uri >>= fun revoke_cert ->
-    string_val "keyChange" json >>= uri >>= fun key_change ->
-    assoc_val "meta" json >>= meta_of_json >>| fun meta ->
-    { new_nonce ; new_account ; new_order ; new_authz ; revoke_cert ;
-      key_change ; meta }
+    let* json = of_string s in
+    let* new_nonce =
+      let* nn = string_val "newNonce" json in
+      uri nn
+    in
+    let* new_account =
+      let* na = string_val "newAccount" json in
+      uri na
+    in
+    let* new_order =
+      let* no = string_val "newOrder" json in
+      uri no
+    in
+    let* new_authz =
+      let* na = opt_string_val "newAuthz" json in
+      maybe uri na
+    in
+    let* revoke_cert =
+      let* rc = string_val "revokeCert" json in
+      uri rc
+    in
+    let* key_change =
+      let* kc = string_val "keyChange" json in
+      uri kc
+    in
+    let* meta =
+      let* m = assoc_val "meta" json in
+      meta_of_json m
+    in
+    Ok { new_nonce ; new_account ; new_order ; new_authz ; revoke_cert ;
+         key_change ; meta }
 end
 
 module Account = struct
@@ -358,7 +397,7 @@ module Account = struct
     | "valid" -> Ok `Valid
     | "deactivated" -> Ok `Deactivated
     | "revoked" -> Ok `Revoked
-    | s -> Rresult.R.error_msgf "unknown account status %s" s
+    | s -> Error (`Msg (Fmt.str "unknown account status %s" s))
 
   (* "it's fine to not have a 'required' orders array" (in contrast to 8555)
      and seen in the wild when creating an account, or retrieving the account url
@@ -369,14 +408,24 @@ module Account = struct
      or https://github.com/letsencrypt/boulder/issues/3335 contains more
      information *)
   let decode str =
-    of_string str >>= fun json ->
-    string_val "status" json >>= status_of_string >>= fun account_status ->
-    opt_string_list "contact" json >>= fun contact ->
-    opt_bool "termsOfServiceAgreed" json >>= fun terms_of_service_agreed ->
-    opt_string_val "orders" json >>= maybe uri >>= fun orders ->
-    opt_string_val "initialIp" json >>= fun initial_ip ->
-    opt_string_val "createdAt" json >>= maybe decode_ptime >>| fun created_at ->
-    { account_status ; contact ; terms_of_service_agreed ; orders ; initial_ip ; created_at }
+    let* json = of_string str in
+    let* account_status =
+      let* s = string_val "status" json in
+      status_of_string s
+    in
+    let* contact = opt_string_list "contact" json in
+    let* terms_of_service_agreed = opt_bool "termsOfServiceAgreed" json in
+    let* orders =
+      let* o = opt_string_val "orders" json in
+      maybe uri o
+    in
+    let* initial_ip = opt_string_val "initialIp" json in
+    let* created_at =
+      let* ca = opt_string_val "createdAt" json in
+      maybe decode_ptime ca
+    in
+    Ok { account_status ; contact ; terms_of_service_agreed ; orders ;
+         initial_ip ; created_at }
 end
 
 type id_type = [ `Dns ]
@@ -387,18 +436,21 @@ let pp_id = Fmt.(pair ~sep:(any " - ") pp_id_type string)
 
 let id_type_of_string = function
   | "dns" -> Ok `Dns
-  | s -> Rresult.R.error_msgf "only DNS typ is supported, got %s" s
+  | s -> Error (`Msg (Fmt.str "only DNS typ is supported, got %s" s))
 
 let decode_id json =
-  string_val "type" json >>= id_type_of_string >>= fun typ ->
-  string_val "value" json >>| fun id ->
-  (typ, id)
+  let* typ =
+    let* t = string_val "type" json in
+    id_type_of_string t
+  in
+  let* id = string_val "value" json in
+  Ok (typ, id)
 
 let decode_ids ids =
   List.fold_left (fun acc json_id ->
-      acc >>= fun acc ->
-      decode_id json_id >>| fun id ->
-      id :: acc)
+      let* acc = acc in
+      let* id = decode_id json_id in
+      Ok (id :: acc))
     (Ok []) ids
 
 module Order = struct
@@ -440,23 +492,52 @@ module Order = struct
     | "processing" -> Ok `Processing
     | "valid" -> Ok `Valid
     | "invalid" -> Ok `Invalid
-    | s -> Rresult.R.error_msgf "unknown order status %s" s
+    | s -> Error (`Msg (Fmt.str "unknown order status %s" s))
 
   let decode str =
-    of_string str >>= fun json ->
-    string_val "status" json >>= status_of_string >>= fun order_status ->
-    opt_string_val "expires" json >>= maybe decode_ptime >>= fun expires ->
-    list_val "identifiers" json >>= decode_ids >>= fun identifiers ->
-    opt_string_val "notBefore" json >>= maybe decode_ptime >>= fun not_before ->
-    opt_string_val "notAfter" json >>= maybe decode_ptime >>= fun not_after ->
-    (match J.Util.member "error" json with `Null -> Ok None | x -> Ok (Some x)) >>= fun error ->
-    (opt_string_list "authorizations" json >>= function
-      | None -> Error (`Msg "no authorizations found in order")
-      | Some auths -> Ok (List.map Uri.of_string auths)) >>= fun authorizations ->
-    string_val "finalize" json >>= uri >>= fun finalize ->
-    opt_string_val "certificate" json >>= maybe uri >>| fun certificate ->
-    { order_status ; expires ; identifiers ; not_before ; not_after ; error ;
-      authorizations ; finalize ; certificate }
+    let* json = of_string str in
+    let* order_status =
+      let* s = string_val "status" json in
+      status_of_string s
+    in
+    let* expires =
+      let* e = opt_string_val "expires" json in
+      maybe decode_ptime e
+    in
+    let* identifiers =
+      let* i = list_val "identifiers" json in
+      decode_ids i
+    in
+    let* not_before =
+      let* nb = opt_string_val "notBefore" json in
+      maybe decode_ptime nb
+    in
+    let* not_after =
+      let* na = opt_string_val "notAfter" json in
+      maybe decode_ptime na
+    in
+    let error =
+      match J.Util.member "error" json with `Null -> None | x -> Some x
+    in
+    let* authorizations =
+      let* auths = opt_string_list "authorizations" json in
+      let* auths =
+        Option.to_result
+          ~none:(`Msg "no authorizations found in order")
+          auths
+      in
+      Ok (List.map Uri.of_string auths)
+    in
+    let* finalize =
+      let* f = string_val "finalize" json in
+      uri f
+    in
+    let* certificate =
+      let* c = opt_string_val "certificate" json in
+      maybe uri c
+    in
+    Ok { order_status ; expires ; identifiers ; not_before ; not_after ; error ;
+         authorizations ; finalize ; certificate }
 end
 
 module Challenge = struct
@@ -469,7 +550,7 @@ module Challenge = struct
     | "tls-alpn-01" -> Ok `Alpn
     | "http-01" -> Ok `Http
     | "dns-01" -> Ok `Dns
-    | s -> Rresult.R.error_msgf "unknown challenge typ %s" s
+    | s -> Error (`Msg (Fmt.str "unknown challenge typ %s" s))
 
   (* turns out, the only interesting ones are dns, http, alpn *)
   (* all share the same style *)
@@ -503,18 +584,32 @@ module Challenge = struct
     | "processing" -> Ok `Processing
     | "valid" -> Ok `Valid
     | "invalid" -> Ok `Invalid
-    | s -> Rresult.R.error_msgf "unknown order status %s" s
+    | s -> Error (`Msg (Fmt.str "unknown order status %s" s))
 
   let decode json =
-    string_val "type" json >>= typ_of_string >>= fun challenge_typ ->
-    string_val "status" json >>= status_of_string >>= fun challenge_status ->
-    string_val "url" json >>= uri >>= fun url ->
+    let* challenge_typ =
+      let* t = string_val "type" json in
+      typ_of_string t
+    in
+    let* challenge_status =
+      let* s = string_val "status" json in
+      status_of_string s
+    in
+    let* url =
+      let* u = string_val "url" json in
+      uri u
+    in
     (* in all three challenges, it's b64 url encoded (but the raw value never used) *)
     (* they MUST >= 128bit entropy, and not have any trailing = *)
-    string_val "token" json >>= fun token ->
-    opt_string_val "validated" json >>= maybe decode_ptime >>= fun validated ->
-    (match J.Util.member "error" json with `Null -> Ok None | x -> Ok (Some x)) >>| fun error ->
-    { challenge_typ ; challenge_status ; url ; token ; validated ; error }
+    let* token = string_val "token" json in
+    let* validated =
+      let* v = opt_string_val "validated" json in
+      maybe decode_ptime v
+    in
+    let error =
+      match J.Util.member "error" json with `Null -> None | x -> Some x
+    in
+    Ok { challenge_typ ; challenge_status ; url ; token ; validated ; error }
 end
 
 module Authorization = struct
@@ -549,14 +644,23 @@ module Authorization = struct
     | "deactivated" -> Ok `Deactivated
     | "expired" -> Ok `Expired
     | "revoked" -> Ok `Revoked
-    | s -> Rresult.R.error_msgf "unknown order status %s" s
+    | s -> Error (`Msg (Fmt.str "unknown order status %s" s))
 
   let decode str =
-    of_string str >>= fun json ->
-    assoc_val "identifier" json >>= decode_id >>= fun identifier ->
-    string_val "status" json >>= status_of_string >>= fun authorization_status ->
-    opt_string_val "expires" json >>= maybe decode_ptime >>= fun expires ->
-    list_val "challenges" json >>= fun challenges ->
+    let* json = of_string str in
+    let* identifier =
+      let* i = assoc_val "identifier" json in
+      decode_id i
+    in
+    let* authorization_status =
+      let* s = string_val "status" json in
+      status_of_string s
+    in
+    let* expires =
+      let* e = opt_string_val "expires" json in
+      maybe decode_ptime e
+    in
+    let* challenges = list_val "challenges" json in
     let challenges =
       (* be modest in what you receive - there may be other challenges in the future *)
       List.fold_left (fun acc json ->
@@ -567,8 +671,12 @@ module Authorization = struct
           | Ok c -> c :: acc) [] challenges
     in
     (* TODO "MUST be present and true for orders containing a DNS identifier with wildcard. for others, it MUST be absent" *)
-    (opt_bool "wildcard" json >>| function None -> false | Some v -> v) >>| fun wildcard ->
-    { identifier ; authorization_status ; expires ; challenges ; wildcard }
+    let* wildcard =
+      Result.map
+        (Option.value ~default:false)
+        (opt_bool "wildcard" json)
+    in
+    Ok { identifier ; authorization_status ; expires ; challenges ; wildcard }
 end
 
 module Error = struct
@@ -652,13 +760,16 @@ module Error = struct
         | "unsupportedContact" -> Ok `Unsupported_contact
         | "unsupportedIdentifier" -> Ok `Unsupported_identifier
         | "userActionRequired" -> Ok `User_action_required
-        | s -> Rresult.R.error_msgf "unknown acme error typ %s" s
+        | s -> Error (`Msg (Fmt.str "unknown acme error typ %s" s))
       end
-    | None -> Rresult.R.error_msgf "unknown error type %s" str
+    | None -> Error (`Msg (Fmt.str "unknown error type %s" str))
 
   let decode str =
-    of_string str >>= fun json ->
-    string_val "type" json >>= err_typ_of_string >>= fun err_typ ->
-    string_val "detail" json >>| fun detail ->
-    { err_typ ; detail }
+    let* json = of_string str in
+    let* err_typ =
+      let* t = string_val "type" json in
+      err_typ_of_string t
+    in
+    let* detail = string_val "detail" json in
+    Ok { err_typ ; detail }
 end

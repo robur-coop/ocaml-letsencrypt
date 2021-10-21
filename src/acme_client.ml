@@ -5,7 +5,9 @@ open Acme_common
 let src = Logs.Src.create "letsencrypt" ~doc:"let's encrypt library"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-let guard p err = if p then Ok () else err
+let ( let* ) = Result.bind
+
+let guard p err = if p then Ok () else Error err
 
 let key_authorization key token =
   let pk = X509.Private_key.public key in
@@ -26,9 +28,9 @@ type solver = {
 }
 
 let error_in endpoint status body =
-  Rresult.R.error_msgf
-    "Error at %s: status %3d - body: %S"
-    endpoint status body
+  Error (`Msg (Fmt.str
+                 "Error at %s: status %3d - body: %S"
+                 endpoint status body))
 
 let http_solver writef =
   let solve_challenge ~token ~key_authorization domain =
@@ -71,9 +73,9 @@ let alpn_solver ?(key_type = `RSA) ?(bits = 2048) writef =
     in
     let valid_from, valid_until = Ptime.epoch, Ptime.epoch in
     match
-      let open Rresult.R.Infix in
-      Signing_request.create dn priv >>= fun csr ->
-      Rresult.R.error_to_msg ~pp_error:X509.Validation.pp_signature_error
+      let* csr = Signing_request.create dn priv in
+      Result.map_error
+        (fun e -> `Msg (Fmt.to_to_string X509.Validation.pp_signature_error e))
         (Signing_request.sign csr ~valid_from ~valid_until ~extensions priv dn)
     with
     | Ok cert -> writef domain ~alpn priv cert
@@ -97,8 +99,7 @@ module Make (Http : HTTP_client.S) = struct
 let location headers =
   match Http.Headers.get_location headers with
   | Some url -> Ok url
-  | None ->
-    Rresult.R.error_msgf "expected a location header, but couldn't find it"
+  | None -> Error (`Msg "expected a location header, but couldn't find it")
 
 let extract_nonce headers =
   match Http.Headers.get headers "Replay-Nonce" with
@@ -185,13 +186,14 @@ let create_account ?ctx ?email cli =
   http_post_jws ?ctx ~no_key_url:true cli body url >|= function
   | Error e -> Error e
   | Ok (201, headers, body) ->
-    let open Rresult.R.Infix in
-    Account.decode body >>= fun account ->
-    guard (account.account_status = `Valid)
-      (Rresult.R.error_msgf "account %a does not have status valid"
-         Account.pp account) >>= fun () ->
-    location headers >>| fun account_url ->
-    { cli with account_url }
+    let* account = Account.decode body in
+    let* () =
+      guard (account.account_status = `Valid)
+        (`Msg (Fmt.str "account %a does not have status valid"
+                 Account.pp account))
+    in
+    let* account_url = location headers in
+    Ok { cli with account_url }
   | Ok (status, _headers, body) -> error_in "newAccount" status body
 
 let get_account ?ctx cli url =
@@ -199,12 +201,12 @@ let get_account ?ctx cli url =
   http_post_jws ?ctx cli body url >|= function
   | Error e -> Error e
   | Ok (200, _headers, body) ->
-    let open Rresult.R.Infix in
     (* at least staging doesn't include orders *)
-    Account.decode body >>| fun acc ->
+    let* acc = Account.decode body in
     (* well, here we may encounter some orders which should be processed
        (or cancelled, considering the lack of a csr)! *)
-    Log.info (fun m -> m "account %a" Account.pp acc)
+    Log.info (fun m -> m "account %a" Account.pp acc);
+    Ok ()
   | Ok (status, _headers, body) -> error_in "get account" status body
 
 let find_account_url ?ctx ?email ~nonce key directory =
@@ -219,15 +221,16 @@ let find_account_url ?ctx ?email ~nonce key directory =
   http_post_jws ?ctx ~no_key_url:true cli body url >>= function
   | Error e -> Lwt.return (Error e)
   | Ok (200, headers, body) ->
-    let open Rresult.R.Infix in
     Lwt.return begin
       (* unclear why this is not an account object, as required in 7.3.0/7.3.1 *)
-      Account.decode body >>= fun account ->
-      guard (account.account_status = `Valid)
-        (Rresult.R.error_msgf "account %a does not have status valid"
-           Account.pp account) >>= fun () ->
-      location headers >>| fun account_url ->
-      { cli with account_url }
+      let* account = Account.decode body in
+      let* () =
+        guard (account.account_status = `Valid)
+          (`Msg (Fmt.str "account %a does not have status valid"
+                   Account.pp account))
+      in
+      let* account_url = location headers in
+      Ok { cli with account_url }
     end
   | Ok (400, _headers, body) ->
     let open Lwt_result.Infix in
@@ -266,7 +269,7 @@ let process_challenge ?ctx solver cli sleep host challenge =
   match challenge.Challenge.challenge_status with
   | `Pending ->
     (* do some work :) solve it! *)
-    let open_err f = f >|= Rresult.R.open_error_msg in
+    let open_err f = f >|= function Ok _ as r -> r | Error (`Msg _) as r -> r in
     let open Lwt_result.Infix in
     let token = challenge.token in
     let key_authorization = key_authorization cli.account_key token in
@@ -323,7 +326,7 @@ let process_authorization ?ctx solver cli sleep url =
         begin match List.filter (fun c -> c.Challenge.challenge_typ = solver.typ) auth.challenges with
           | [] ->
             Log.err (fun m -> m "no challenge found for solver");
-            Lwt.return (Rresult.R.error_msgf "couldn't find a challenge that matches the provided solver")
+            Lwt.return (Error (`Msg "couldn't find a challenge that matches the provided solver"))
           | c::cs ->
             if not (cs = []) then
               Log.err (fun m -> m "multiple (%d) challenges found for solver, taking head"
@@ -358,9 +361,8 @@ let finalize ?ctx cli csr url =
   http_post_jws ?ctx cli body url >|= function
   | Error e -> Error e
   | Ok (200, headers, body) ->
-    let open Rresult.R.Infix in
-    Order.decode body >>| fun order ->
-    headers, order
+    let* order = Order.decode body in
+    Ok (headers, order)
   | Ok (status, _, body) -> error_in "finalize" status body
 
 let dl_certificate ?ctx cli url =
@@ -378,9 +380,8 @@ let get_order ?ctx cli url =
   http_post_jws ?ctx cli body url >|= function
   | Error e -> Error e
   | Ok (200, headers, body) ->
-    let open Rresult.R.Infix in
-    Order.decode body >>| fun order ->
-    headers, order
+    let* order = Order.decode body in
+    Ok (headers, order)
   | Ok (status, _header, body) ->
     error_in "getting order" status body
 
@@ -424,7 +425,7 @@ let rec process_order ?ctx solver cli sleep csr order_url headers order =
   | `Invalid ->
     (* exterminate -- consider the order process abandoned *)
     Log.err (fun m -> m "order %a is invalid, falling apart" Order.pp order);
-    Lwt.return (Rresult.R.error_msgf "attempting to process an invalid order")
+    Lwt.return (Error (`Msg "attempting to process an invalid order"))
   | `Pending ->
     (* there's still some authorization pending, according to the server! *)
     let open Lwt_result.Infix in
@@ -453,7 +454,7 @@ let rec process_order ?ctx solver cli sleep csr order_url headers order =
     match order.certificate with
     | None ->
       Log.warn (fun m -> m "received valid order %a without certificate URL, should not happen" Order.pp order);
-      Lwt.return (Rresult.R.error_msgf "valid order without certificate URL")
+      Lwt.return (Error (`Msg "valid order without certificate URL"))
     | Some cert ->
       dl_certificate ?ctx cli cert >|= function
       | Error e -> Error e

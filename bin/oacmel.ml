@@ -32,16 +32,17 @@ let doit email endpoint account_key solver sleep csr =
 
 let main _ priv_pem csr_pem email solver acme_dir ip key endpoint cert zone =
   Mirage_crypto_rng_unix.initialize () ;
-  let open Rresult.R.Infix in
   let r =
+    let ( let* ) = Result.bind in
     let priv_pem, csr_pem, cert = Fpath.(v priv_pem, v csr_pem, v cert) in
-    Bos.OS.File.read priv_pem >>= fun priv_pem ->
-    Bos.OS.File.read csr_pem >>= fun csr_pem ->
-    Bos.OS.File.exists cert >>= function
-    | true -> Error (`Msg ("output file " ^ Fpath.to_string cert ^ " already exists"))
-    | false ->
-      X509.Private_key.decode_pem (Cstruct.of_string priv_pem) >>= fun account_key ->
-      X509.Signing_request.decode_pem (Cstruct.of_string csr_pem) >>= fun request ->
+    let* priv_pem = Bos.OS.File.read priv_pem in
+    let* csr_pem = Bos.OS.File.read csr_pem in
+    let* f_exists = Bos.OS.File.exists cert in
+    if f_exists then
+      Error (`Msg (Fmt.str "output file %a already exists" Fpath.pp cert))
+    else
+      let* account_key = X509.Private_key.decode_pem (Cstruct.of_string priv_pem) in
+      let* request = X509.Signing_request.decode_pem (Cstruct.of_string csr_pem) in
       let solver =
         match solver, acme_dir, ip, key with
         | _, Some path, None, None -> (* using http solver! *)

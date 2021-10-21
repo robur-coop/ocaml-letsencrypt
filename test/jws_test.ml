@@ -66,8 +66,8 @@ let rsa_key () =
 let string_member key json =
   match Yojson.Basic.Util.member key json with
   | `String s -> Ok s
-  | _ -> Rresult.R.error_msgf "couldn't find string %s in %a"
-           key Yojson.Basic.pp json
+  | _ -> Error (`Msg (Fmt.str "couldn't find string %s in %a"
+                        key Yojson.Basic.pp json))
 
 let json_of_string s =
   try Ok (Yojson.Basic.from_string s) with
