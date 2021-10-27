@@ -1,3 +1,8 @@
+# v0.4.1 (2021-10-27)
+
+* remove rresult dependency (#29 @hannesm)
+* avoid deprecated fmt functions (#29 @hannesm)
+
 # v0.4.0 (2021-09-21)
 
 * support EC (P-256, P-384, P-521) account keys (@reynir @hannesm)
