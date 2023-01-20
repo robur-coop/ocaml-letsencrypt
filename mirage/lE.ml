@@ -18,8 +18,8 @@ struct
   module Headers = struct
     type t = (string * string) list
 
-    let add lst k v = (k, v) :: lst
-    let init_with k v = [ k, v ]
+    let add lst k v = (String.lowercase_ascii k, v) :: lst
+    let init_with k v = [ String.lowercase_ascii k, v ]
     let get lst k = List.assoc_opt (String.lowercase_ascii k) lst
     let get_location lst = Option.map Uri.of_string (get lst "location")
     let to_string = Fmt.to_to_string Fmt.(Dump.list (Dump.pair string string))
