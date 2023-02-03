@@ -6,8 +6,8 @@
  (libraries letsencrypt http-mirage-client tcpip mirage-time duration emile))
 
 (library
- (name le_server)
+ (name le_http_server)
  (wrapped false)
- (public_name letsencrypt-mirage.server)
- (modules lE_server)
+ (public_name letsencrypt-mirage.http-server)
+ (modules lE_http_server)
  (libraries letsencrypt letsencrypt-mirage paf.mirage))
