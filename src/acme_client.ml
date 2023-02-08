@@ -10,12 +10,11 @@ let ( let* ) = Result.bind
 let guard p err = if p then Ok () else Error err
 
 let key_authorization key token =
-  let pk = X509.Private_key.public key in
-  let thumbprint = Jwk.thumbprint pk in
-  Printf.sprintf "%s.%s" token thumbprint
+  let thumbprint = Jose.Jwk.get_thumbprint `SHA256 key |> Result.get_ok in
+  Printf.sprintf "%s.%s" token (Cstruct.to_string thumbprint |> B64u.urlencode)
 
 type t = {
-  account_key : X509.Private_key.t;
+  account_key : Jose.Jwk.priv Jose.Jwk.t;
   mutable next_nonce : string;
   d : Directory.t;
   account_url : Uri.t;
@@ -515,5 +514,7 @@ let initialise ?ctx ~endpoint ?email account_key =
      - retrieve account URL for account_key (if already registered)
      let's first try the latter -- the former is done by find_account_url if account does not exist!
   *)
-  find_account_url ?ctx ?email ~nonce account_key d
+  let jwk = Jose.Jwk.of_priv_x509 ~use:`Sig account_key |> Result.get_ok in
+
+  find_account_url ?ctx ?email ~nonce jwk d
 end

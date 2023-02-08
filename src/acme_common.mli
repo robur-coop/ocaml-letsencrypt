@@ -4,7 +4,7 @@ val letsencrypt_staging_url : Uri.t
 
 val sha256_and_base64 : string -> string
 
-type json = Yojson.Basic.t
+type json = Yojson.Safe.t
 
 val json_to_string : ?comma:string -> ?colon:string -> json -> string
 
@@ -15,14 +15,17 @@ module Jwk : sig
   *)
 
   (** [key] identifies a key. *)
-  type key = X509.Public_key.t
+  type 'a key = 'a Jose.Jwk.t
 
-  val thumbprint : key -> string
+  val thumbprint : 'a key -> string
   (** [thumbprint key] produces the JWK thumbprint of [key]. *)
 
-  val encode : key -> json
+  val encode : 'a key -> json
 
-  val decode : string -> (key, [> `Msg of string ]) result
+  val decode : string -> (Jose.Jwk.public key, 
+  [>  `Json_parse_failed of string
+    | `Msg of string
+    | `Unsupported_kty ]) result
 end
 
 module Jws : sig
@@ -34,20 +37,16 @@ module Jws : sig
       its interface will change in the future.  *)
 
   (** type [header] records information about the header. *)
-  type header = {
-    alg : string;
-    nonce : string option;
-    jwk : Jwk.key option;
-  }
+  type header = Jose.Header.t
 
   val encode_acme : ?kid_url:Uri.t -> data:string -> ?nonce:string -> Uri.t ->
-    X509.Private_key.t -> string
+    Jose.Jwk.priv Jose.Jwk.t -> string
 
   val encode : ?protected:(string * json) list -> data:string ->
-    ?nonce:string -> X509.Private_key.t -> string
+    ?nonce:string -> Jose.Jwk.priv Jose.Jwk.t -> string
 
-  val decode : ?pub:Jwk.key -> string ->
-    (header * string, [> `Msg of string ]) result
+  val decode : ?pub:(Jose.Jwk.public Jose.Jwk.t) -> string ->
+    (header * string, [> `Invalid_signature | `Msg of string | `Not_json | `Not_supported ]) result
 end
 
 module Directory : sig

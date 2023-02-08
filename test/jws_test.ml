@@ -34,28 +34,32 @@ irbM4XSw2jtvX7qeUzcFY/E=
 "
 
 let expected_protected =
-  "eyJhbGciOiJSUzI1NiIsImp3ayI6eyJlIjoiQVFBQiIsImt0eSI6" ^
-  "IlJTQSIsIm4iOiI0eGdaM2VSUGt3b1J2eTdxZVJVYm1NRGUwVi14" ^
-  "SDllV0xkdTBpaGVlTGxybUQybXFXWGZQOUllU0tBcGJuMzRnOFR1" ^
-  "QVM5ZzV6aHE4RUxRM2ttanItS1Y4NkdBTWdJNlZBY0dscTNRcnpw" ^
-  "VENmXzMwQWI3LXphd3JmUmFGT05hMUh3RXpQWTFLSG5HVmt4SmM4" ^
-  "NWdOa3dZSTlTWTJSSFh0dmxuM3pzNXdJVE5yZG9zcUVYZWFJa1ZZ" ^
-  "QkVoYmhOdTU0cHAza3hvNlR1V0xpOWU2cFhlV2V0RXdtbEJ3dFda" ^
-  "bFBvaWIyajNUeExCa3NLWmZveUZ5ZWszODBtSGdKQXVtUV9JMmZq" ^
-  "ajk4Xzk3bWszaWhPWTRBZ1ZkQ0RqMXpfR0NvWmtHNVJxN25iQ0d5" ^
-  "b3N5S1d5RFgwMFpzLW5OcVZob0xlSXZYQzRubldkSk1aNnJvZ3h5" ^
-  "UVEifSwibm9uY2UiOiJub25jZSJ9"
+  "eyJhbGciOiJSUzI1NiIsImtpZCI6IjZuaWN4emg2V0VUUWxydmRj" ^
+  "aGt6LVUzZTNET1FaNGhlSktVNjNyZnFNcVEiLCJqd2siOnsiZSI6" ^
+  "IkFRQUIiLCJuIjoiNHhnWjNlUlBrd29Sdnk3cWVSVWJtTURlMFYt" ^
+  "eEg5ZVdMZHUwaWhlZUxscm1EMm1xV1hmUDlJZVNLQXBibjM0ZzhU" ^
+  "dUFTOWc1emhxOEVMUTNrbWpyLUtWODZHQU1nSTZWQWNHbHEzUXJ6" ^
+  "cFRDZl8zMEFiNy16YXdyZlJhRk9OYTFId0V6UFkxS0huR1ZreEpj" ^
+  "ODVnTmt3WUk5U1kyUkhYdHZsbjN6czV3SVROcmRvc3FFWGVhSWtW" ^
+  "WUJFaGJoTnU1NHBwM2t4bzZUdVdMaTllNnBYZVdldEV3bWxCd3RX" ^
+  "WmxQb2liMmozVHhMQmtzS1pmb3lGeWVrMzgwbUhnSkF1bVFfSTJm" ^
+  "amo5OF85N21rM2loT1k0QWdWZENEajF6X0dDb1prRzVScTduYkNH" ^
+  "eW9zeUtXeURYMDBacy1uTnFWaG9MZUl2WEM0bm5XZEpNWjZyb2d4" ^
+  "eVFRIiwia3R5IjoiUlNBIiwia2lkIjoiNm5pY3h6aDZXRVRRbHJ2" ^
+  "ZGNoa3otVTNlM0RPUVo0aGVKS1U2M3JmcU1xUSIsIng1dCI6Ijk4" ^
+  "WEZNbUZxRWtrb0RudTdHSjhjRFdGaTJJWSJ9LCJub25jZSI6Im5v" ^
+  "bmNlIn0"
 
 let expected_payload = "eyJNc2ciOiJIZWxsbyBKV1MifQ"
 
 let expected_signature =
-  "eAGUikStX_UxyiFhxSLMyuyBcIB80GeBkFROCpap2sW3EmkU_ggF" ^
-  "knaQzxrTfItICSAXsCLIquZ5BbrSWA_4vdEYrwWtdUj7NqFKjHRa" ^
-  "zpLHcoR7r1rEHvkoP1xj49lS5fc3Wjjq8JUhffkhGbWZ8ZVkgPdC" ^
-  "4tMBWiQDoth-x8jELP_3LYOB_ScUXi2mETBawLgOT2K8rA0Vbbmx" ^
-  "hWNlOWuUf-8hL5YX4IOEwsS8JK_TrTq5Zc9My0zHJmaieqDV0UlP" ^
-  "k0onFjPFkGm7MrPSgd0MqRG-4vSAg2O4hDo7rKv4n8POjjXlNQvM" ^
-  "9IPLr8qZ7usYBKhEGwX3yq_eicAwBw"
+  "qv79C1SFoz_7EWt7WVIhg5kVBPbCK__Xa1kFtodtS7hD78KvRQrU" ^
+  "Cx4Usa5T6PrFKmutXumyArjW3RxwRa1ATKo7g8k-F0TeUELXsZic" ^
+  "fLs_5jHu8vj3g47_mlhjMg9oJ6YNDVdhg3Gm19ZXgm6W_WlnM8wC" ^
+  "2dUVVSVYLxP7Hk2b6urM_tXJ3HtWRHbmQtD8hxQaMCNzz99usPvA" ^
+  "I1SW5b-I1rK0dxIOZ205Kce4VtLgEVs9hz45b4t93-g0bP1clHCU" ^
+  "iNKf-vzOs_45H1EKkxEpGDO5fQkeNfoQxTsE03AnB9SZXiF-ApDW" ^
+  "QMz_4f3YJ9YhRVB1iXx9vgAMkqhTaQ"
 
 let rsa_key () =
   match X509.Private_key.decode_pem (Cstruct.of_string testkey_pem) with
@@ -64,21 +68,30 @@ let rsa_key () =
   | Error `Msg e -> assert_failure e
 
 let string_member key json =
-  match Yojson.Basic.Util.member key json with
+  match Yojson.Safe.Util.member key json with
   | `String s -> Ok s
   | _ -> Error (`Msg (Fmt.str "couldn't find string %s in %a"
-                        key Yojson.Basic.pp json))
+                        key Yojson.Safe.pp json))
 
 let json_of_string s =
-  try Ok (Yojson.Basic.from_string s) with
+  try Ok (Yojson.Safe.from_string s) with
     Yojson.Json_error str -> Error (`Msg str)
+
+let decode_printer = function
+| Error `Invalid_signature -> "invalid signature"
+| Error `Not_json -> "not json"
+| Error `Not_supported -> "format not supported"
+| Error (`Msg e) -> e
+| Ok (_, payload) -> payload
 
 let jws_encode_somedata () =
   let priv_key = rsa_key () in
   let data  = {|{"Msg":"Hello JWS"}|} in
   let nonce = "nonce" in
-  let protected = [ "jwk", Jwk.encode (X509.Private_key.public priv_key) ] in
-  let jws = Jws.encode ~protected ~data ~nonce priv_key in
+
+  let jwk = Jose.Jwk.of_priv_x509 priv_key |> Result.get_ok in
+  let protected = [ "jwk", Jwk.encode jwk ] in
+  let jws = Jws.encode ~protected ~data ~nonce jwk in
   match json_of_string jws with
   | Ok json -> json
   | Error (`Msg e) -> assert_failure e
@@ -86,7 +99,7 @@ let jws_encode_somedata () =
 let test_member member expected _ctx =
   let jws = jws_encode_somedata () in
   match string_member member jws with
-  | Ok protected -> assert_equal protected expected
+  | Ok protected -> assert_equal expected protected ~printer:(fun s -> s)
   | Error (`Msg e) -> assert_failure e
 
 let test_encode_protected = test_member "protected" expected_protected
@@ -94,7 +107,7 @@ let test_encode_payload = test_member "payload" expected_payload
 let test_encode_signature = test_member "signature" expected_signature
 
 let test_decode_null _ctx =
-  assert_equal (Jws.decode "{}") (Error (`Msg "couldn't find string protected in {}"))
+  assert_equal (Jws.decode "{}") (Error (`Msg "token didn't include header, payload or signature"))
 
 let jws_decode_somedata () =
   let data = Printf.sprintf
@@ -106,18 +119,24 @@ let test_decode_rsakey _ctx =
   let jws = jws_decode_somedata () in
   let key = rsa_key () in
   match jws with
+  | Error `Invalid_signature -> assert_failure "invalid signature"
+  | Error `Not_json -> assert_failure "not json"
+  | Error `Not_supported -> assert_failure "format not supported"
   | Error (`Msg e) -> assert_failure e
   | Ok (protected, _payload) ->
-    let pub = X509.Private_key.public key in
-    assert_equal protected.Jws.jwk (Some pub)
+    let pub = X509.Private_key.public key |> Jose.Jwk.of_pub_x509 |> Result.get_ok in
+    assert_equal protected.Jose.Header.jwk (Some pub)
 
 (* XXX. at this stage we probably wont the expected payload to be on some
  * global variable. *)
 let test_decode_payload _ctx =
   match jws_decode_somedata () with
+  | Error `Invalid_signature -> assert_failure "invalid signature"
+  | Error `Not_json -> assert_failure "not json"
+  | Error `Not_supported -> assert_failure "format not supported"
   | Error (`Msg e) -> assert_failure e
   | Ok (_, payload) ->
-    assert_equal payload {|{"Msg":"Hello JWS"}|}
+    assert_equal payload {|{"Msg":"Hello JWS"}|} ~printer:(fun s -> s)
 
 let rfc7520_payload =
   "It\xe2\x80\x99s a dangerous business, Frodo, going out your " ^
@@ -144,7 +163,7 @@ let rfc7520_4_1_rsa_pkcs_sign _ctx =
          "s7pFc")
     in
     match Mirage_crypto_pk.Rsa.priv_of_primes ~e ~p ~q with
-    | Ok p -> `RSA p
+    | Ok p -> Jose.Jwk.make_priv_rsa ~use:`Sig p
     | Error _ -> assert false
   in
   let b64_payload =
@@ -167,15 +186,14 @@ let rfc7520_4_1_rsa_pkcs_sign _ctx =
       "eyJhbGciOiJSUzI1NiIsImtpZCI6ImJpbGJvLmJhZ2dpbnNAaG9iYml0b24uZX" ^
       "hhbXBsZSJ9"
     in
-    json_to_string ~comma:", " ~colon:": " (`Assoc [
-        ("protected", `String prot_header) ;
+    json_to_string (`Assoc [
         ("payload", `String b64_payload) ;
+        ("protected", `String prot_header) ;
         ("signature", `String signature) ;
       ])
   in
   let signature = Jws.encode ~protected ~data:rfc7520_payload key in
-  assert_equal rfc_out signature
-
+  assert_equal rfc_out signature ~printer:(fun a -> a)
 let rfc7520_4_3_es512_sign _ctx =
   let key =
     let d =
@@ -196,8 +214,8 @@ let rfc7520_4_3_es512_sign _ctx =
   let rfc_x = "AHKZLLOsCOzz5cY97ewNUajB957y-C-U88c3v13nmGZx6sYl_oJXu9A5RkTKqjqvjyekWF-7ytDyRXYgCF5cj0Kt"
   and rfc_y = "AdymlHvOiLxXkEhayXQnNCvDX4h9htZaCJN34kfmC6pV5OhQHiraVySsUdaQkAgDPrwQrJmbnX9cwlGfP-HqHZR1"
   in
-  assert_equal rfc_x (Letsencrypt__B64u.urlencode (Cstruct.to_string x));
-  assert_equal rfc_y (Letsencrypt__B64u.urlencode (Cstruct.to_string y));
+  assert_equal rfc_x (Letsencrypt__B64u.urlencode (Cstruct.to_string x)) ~printer:(fun a -> a);
+  assert_equal rfc_y (Letsencrypt__B64u.urlencode (Cstruct.to_string y)) ~printer:(fun a -> a);
   let rfc_signature =
     "AE_R_YZCChjn4791jSQCrdPZCNYqHXCTZH0-JZGYNl" ^
     "aAjP2kqaluUIIUnC9qvbu9Plon7KRTzoNEuT4Va2cmL1eJAQy3mt" ^
@@ -209,16 +227,21 @@ let rfc7520_4_3_es512_sign _ctx =
       `Assoc [ "alg", `String "ES512" ; "kid", `String "bilbo.baggins@hobbiton.example" ]
       |> json_to_string |> Letsencrypt__B64u.urlencode
     in
-    assert_equal prot_header "eyJhbGciOiJFUzUxMiIsImtpZCI6ImJpbGJvLmJhZ2dpbnNAaG9iYml0b24uZXhhbXBsZSJ9";
+    assert_equal "eyJhbGciOiJFUzUxMiIsImtpZCI6ImJpbGJvLmJhZ2dpbnNAaG9iYml0b24uZXhhbXBsZSJ9" prot_header ~printer:(fun a -> a);
     json_to_string ~comma:", " ~colon:": " (`Assoc [
         ("protected", `String prot_header) ;
         ("payload", `String (Letsencrypt__B64u.urlencode rfc7520_payload)) ;
         ("signature", `String rfc_signature) ;
       ])
   in
-  match Jws.decode ~pub:(`P521 pub) data with
+  print_endline data;
+  let jwk = Jose.Jwk.of_pub_x509 (`P521 pub) |> Result.get_ok in
+  match Jws.decode ~pub:jwk data with
   | Ok _ -> ()
-  | Error _ -> assert false
+  | Error `Invalid_signature -> print_endline "invalid signature"; assert_failure "invalid signature"
+  | Error `Not_json -> print_endline "not json";  assert_failure "not json"
+  | Error `Not_supported -> print_endline "format not supported";  assert_failure "format not supported"
+  | Error (`Msg e) -> print_endline e;  assert_failure e
 
 
 let all_tests = [
