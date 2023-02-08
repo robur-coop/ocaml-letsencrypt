@@ -2,7 +2,9 @@
 
     This module is to help the user to launch an ALPN server (and be able to
     handle [http/1.1] and [h2] requests) through a TLS certificate provided by
-    Let's encrypt. *)
+    Let's encrypt. The challenge is done {i via} HTTP (unlike the ALPN challenge
+    offered by Let's encrypt). The [.well-known/*] path is therefore used and
+    the user should not define such a route. *)
 
 module Make
     (Time : Mirage_time.S)
