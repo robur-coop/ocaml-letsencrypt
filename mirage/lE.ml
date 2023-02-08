@@ -1,5 +1,3 @@
-(* (c) Hannes Menhert *)
-
 type configuration = {
   email : Emile.mailbox option;
   certificate_seed : string option;
@@ -11,7 +9,7 @@ type configuration = {
   account_key_bits : int option;
 }
 
-module HTTP : Letsencrypt__HTTP_client.S with type ctx = Http_mirage_client.t (* FIXME *) =
+module HTTP : Letsencrypt.HTTP_client.S with type ctx = Http_mirage_client.t =
 struct
   type ctx = Http_mirage_client.t
 
