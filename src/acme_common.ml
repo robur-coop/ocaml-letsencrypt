@@ -101,6 +101,8 @@ module Jwk = struct
   let decode data =
     Jose.Jwk.of_pub_json_string data
 
+  (* XXX. This get_ok is fine because it can only fail when using  
+     a kty oct which never happens in letsencrypt *)
   let thumbprint pub_key =
     Jose.Jwk.get_thumbprint `SHA256 pub_key
     |> Result.get_ok
@@ -117,6 +119,8 @@ module Jws = struct
     |> List.append protected
     in
     let header = Jose.Header.make_header ~extra ~jwk_header:(List.mem_assoc "jwk" protected) priv in
+    (* XXX. This get_ok is fine because it can only fail when using  
+       a kty oct which never happens in letsencrypt *)
     Jose.Jws.sign ~header ~payload:data priv
     |> Result.get_ok
     |> Jose.Jws.to_string ~serialization:`Flattened

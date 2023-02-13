@@ -10,6 +10,8 @@ let ( let* ) = Result.bind
 let guard p err = if p then Ok () else Error err
 
 let key_authorization key token =
+  (* XXX. This get_ok is fine because it can only fail when using  
+     a kty oct which never happens in letsencrypt *)
   let thumbprint = Jose.Jwk.get_thumbprint `SHA256 key |> Result.get_ok in
   Printf.sprintf "%s.%s" token (Cstruct.to_string thumbprint |> B64u.urlencode)
 
