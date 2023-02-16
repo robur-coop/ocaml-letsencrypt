@@ -81,10 +81,8 @@ let main _ priv_pem csr_pem email solver acme_dir ip key endpoint cert zone =
         Bos.OS.File.write cert (Cstruct.to_string @@ X509.Certificate.encode_pem_multiple t)
   in
   match r with
-  | Ok _ -> `Ok ()
-  | Error (`Msg e) ->
-    Logs.err (fun m -> m "Error %s" e) ;
-    `Error ()
+  | Ok _ -> Ok ()
+  | Error (`Msg e) -> Error (Fmt.str "Error %s" e)
 
 let setup_log style_renderer level =
   Fmt_tty.setup_std_outputs ?style_renderer ();
@@ -155,11 +153,9 @@ let info =
       `S "DESCRIPTION"; `P "This is software is experimental. Don't use it.";
       `S "BUGS"; `P "Email bug reports to <maker@tumbolandia.net>";
     ] in
-  Term.info "oacmel" ~version:"%%VERSION%%" ~doc ~man
+  Cmd.info "oacmel" ~version:"%%VERSION%%" ~doc ~man
 
 let () =
   Printexc.record_backtrace true;
   let cli = Term.(const main $ setup_log $ priv_pem $ csr_pem $ email $ solver $ acme_dir $ ip $ key $ endpoint $ cert $ zone) in
-  match Term.eval (cli, info) with
-  | `Error _ -> exit 1
-  | _        -> exit 0
+  exit (Cmd.eval_result (Cmd.v info cli))

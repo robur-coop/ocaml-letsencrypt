@@ -11,6 +11,9 @@ val letsencrypt_staging_url : Uri.t
 
 val sha256_and_base64 : string -> string
 
+(** The required HTTP client to do the Let's encrypt challenge. *)
+module HTTP_client = HTTP_client
+
 (** ACME Client.
 
     This module provides client commands.
