@@ -96,11 +96,6 @@ let maybe f = function
 module Jwk = struct
   type 'a key = 'a Jose.Jwk.t
 
-  let encode = Jose.Jwk.to_pub_json
-
-  let decode data =
-    Jose.Jwk.of_pub_json_string data
-
   (* XXX. This get_ok is fine because it can only fail when using  
      a kty oct which never happens in letsencrypt *)
   let thumbprint pub_key =
@@ -111,39 +106,23 @@ module Jwk = struct
 end
 
 module Jws = struct
-  type header = Jose.Header.t
+  let encode_acme ?kid_url ~data ?nonce url priv =
+    let kid = Option.map Uri.to_string kid_url in
+    let url = "url", `String (Uri.to_string url) in
 
-  let encode ?(protected = []) ~data ?nonce priv =
-    let extra = Option.map (fun nonce -> [ "nonce", `String nonce]) nonce
-    |> Option.value ~default:[]
-    |> List.append protected
+    let extra = match nonce with
+    | Some nonce -> [ "nonce", `String nonce; url ]
+    | None -> [ url ]
     in
-    let header = Jose.Header.make_header ~extra ~jwk_header:(List.mem_assoc "jwk" protected) priv in
+    let header = 
+      let header' = Jose.Header.make_header ~extra ~jwk_header:(Option.is_none kid) priv in
+      { header' with kid }
+    in
     (* XXX. This get_ok is fine because it can only fail when using  
        a kty oct which never happens in letsencrypt *)
     Jose.Jws.sign ~header ~payload:data priv
     |> Result.get_ok
     |> Jose.Jws.to_string ~serialization:`Flattened
-
-  let encode_acme ?kid_url ~data ?nonce url priv =
-    let kid_or_jwk =
-      match kid_url with
-      | None -> "jwk", Jwk.encode (Jose.Jwk.pub_of_priv priv)
-      | Some url -> "kid", `String (Uri.to_string url)
-    in
-    let url = "url", `String (Uri.to_string url) in
-    let protected = [ kid_or_jwk ; url ] in
-    encode ~protected ~data ?nonce priv
-
-  let decode ?pub data =
-    let* jws = Jose.Jws.of_string data in
-    let* pub =
-      match pub, jws.header.jwk with
-      | Some pub, _ -> Ok pub
-      | None, Some pub -> Ok pub
-      | None, None -> Error (`Msg "no public key found")
-    in
-    Result.map (fun (jws : Jose.Jws.t) -> jws.header, jws.payload) @@ Jose.Jws.validate ~jwk:pub jws
 end
 
 let uri s = Ok (Uri.of_string s)
