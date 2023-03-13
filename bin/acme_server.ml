@@ -3,7 +3,7 @@ open Cohttp_lwt_unix
 open Dispatch
 open Lwt
 
-module Json = Yojson.Basic
+module Json = Yojson.Safe
 
 open Dispatch
 open Acme_common
