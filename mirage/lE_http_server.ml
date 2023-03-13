@@ -73,7 +73,7 @@ struct
       Alpn.injection;
     }
 
-  let with_lets_encrypt_certificates ?(port = 443) stackv4v6 ~production config
+  let with_lets_encrypt_certificates ?(port = 443) ?(alpn_protocols= [ "http/1.1"; "h2" ]) stackv4v6 ~production config
       client handler =
     let certificates = ref None in
     let stop_http_server = Lwt_switch.create () in
@@ -99,7 +99,7 @@ struct
       | None -> Lwt.return_error `No_certificates
       | Some certificates -> (
           let cfg =
-            Tls.Config.server ~alpn_protocols:[ "h2"; "http/1.1" ] ~certificates
+            Tls.Config.server ~alpn_protocols ~certificates
               () in
           Paf.TLS.server_of_flow cfg tcp >>= function
           | Ok flow -> Lwt.return_ok (Paf.TCP.dst tcp, flow)
