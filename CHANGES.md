@@ -1,3 +1,7 @@
+# v0.5.1 (2023-03-13)
+
+* letsencrypt-mirage: allow alpn protocols to be specified (#33 @dinosaure)
+
 # v0.5.0 (2023-02-17)
 
 * adapt to mirage-crypto-rng 0.11.0 API changes (@hannesm)
