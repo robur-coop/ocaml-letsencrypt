@@ -9,7 +9,7 @@ let pp_error ppf = function
 module Make
     (Time : Mirage_time.S)
     (Stack : Tcpip.Stack.V4V6)
-    (Random : Mirage_random.S)
+    (Random : Mirage_crypto_rng_mirage.S)
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK) =
 struct
@@ -98,13 +98,13 @@ struct
       >>= function
       | None -> Lwt.return_error `No_certificates
       | Some certificates -> (
-          let cfg =
-            Tls.Config.server ~alpn_protocols ~certificates
-              () in
-          Paf.TLS.server_of_flow cfg tcp >>= function
-          | Ok flow -> Lwt.return_ok (Paf.TCP.dst tcp, flow)
-          | Error `Closed -> Lwt.return_error (`Write `Closed)
-          | Error err ->
+          match Tls.Config.server ~alpn_protocols ~certificates () with
+          | Error `Msg msg -> Lwt.return_error (`Msg msg)
+          | Ok cfg ->
+            Paf.TLS.server_of_flow cfg tcp >>= function
+            | Ok flow -> Lwt.return_ok (Paf.TCP.dst tcp, flow)
+            | Error `Closed -> Lwt.return_error (`Write `Closed)
+            | Error err ->
               let err = msgf "%a" Paf.TLS.pp_write_error err in
               Paf.TCP.close tcp >>= fun () -> Lwt.return_error err) in
     let module R = (val Mimic.repr Paf.tls_protocol) in

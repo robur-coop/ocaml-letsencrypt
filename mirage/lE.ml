@@ -86,7 +86,6 @@ module Make (Time : Mirage_time.S) (Stack : Tcpip.Stack.V4V6) = struct
   module Acme = Letsencrypt.Client.Make (HTTP)
 
   let gen_key ?seed ?bits key_type =
-    let seed = Option.map Cstruct.of_string seed in
     X509.Private_key.generate ?seed ?bits key_type
 
   let csr key host =
