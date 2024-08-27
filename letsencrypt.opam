@@ -27,7 +27,6 @@ depends: [
   "ounit2" {with-test}
   "ptime"
   "domain-name" {>= "0.2.0"}
-  "cstruct" {>= "6.0.0"}
 ]
 conflicts: [ "result" {< "1.5"} ]
 build: [

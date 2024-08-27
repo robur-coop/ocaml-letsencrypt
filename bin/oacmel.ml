@@ -14,13 +14,12 @@ end
 
 module Acme_cli = Letsencrypt.Client.Make(HTTP_client)
 
-let dns_out ip cs =
+let dns_out ip buf =
   let out = Lwt_unix.(socket PF_INET SOCK_DGRAM 0) in
   let server = Lwt_unix.ADDR_INET (ip, 53) in
-  let bl = Cstruct.length cs in
-  Lwt_unix.sendto out (Cstruct.to_bytes cs) 0 bl [] server >>= fun n ->
+  Lwt_unix.sendto out (Bytes.unsafe_of_string buf) 0 (String.length buf) [] server >>= fun n ->
   (* TODO should listen for a reply from NS, report potential errors and retransmit if UDP frame got lost *)
-  if n = bl then Lwt.return_ok () else Lwt.return_error (`Msg "couldn't send nsupdate")
+  if n = String.length buf then Lwt.return_ok () else Lwt.return_error (`Msg "couldn't send nsupdate")
 
 let sleep x = Lwt_unix.sleep (float_of_int x)
 
@@ -41,8 +40,8 @@ let main _ priv_pem csr_pem email solver acme_dir ip key endpoint cert zone =
     if f_exists then
       Error (`Msg (Fmt.str "output file %a already exists" Fpath.pp cert))
     else
-      let* account_key = X509.Private_key.decode_pem (Cstruct.of_string priv_pem) in
-      let* request = X509.Signing_request.decode_pem (Cstruct.of_string csr_pem) in
+      let* account_key = X509.Private_key.decode_pem priv_pem in
+      let* request = X509.Signing_request.decode_pem csr_pem in
       let solver =
         match solver, acme_dir, ip, key with
         | _, Some path, None, None -> (* using http solver! *)
@@ -78,7 +77,7 @@ let main _ priv_pem csr_pem email solver acme_dir ip key endpoint cert zone =
       | Error e -> Error e
       | Ok t ->
         Logs.info (fun m -> m "Certificates downloaded");
-        Bos.OS.File.write cert (Cstruct.to_string @@ X509.Certificate.encode_pem_multiple t)
+        Bos.OS.File.write cert (X509.Certificate.encode_pem_multiple t)
   in
   match r with
   | Ok _ -> Ok ()
