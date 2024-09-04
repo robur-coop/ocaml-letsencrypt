@@ -10,4 +10,4 @@
  (wrapped false)
  (public_name letsencrypt-mirage.http-server)
  (modules lE_http_server)
- (libraries letsencrypt letsencrypt-mirage paf.mirage))
+ (libraries letsencrypt letsencrypt-mirage paf.mirage mirage-crypto-rng-mirage))

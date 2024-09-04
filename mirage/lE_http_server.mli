@@ -9,7 +9,7 @@
 module Make
     (Time : Mirage_time.S)
     (Stack : Tcpip.Stack.V4V6)
-    (Random : Mirage_random.S)
+    (Random : Mirage_crypto_rng_mirage.S)
     (Mclock : Mirage_clock.MCLOCK)
     (Pclock : Mirage_clock.PCLOCK) : sig
   val get_certificates :
