@@ -1,3 +1,8 @@
+# v1.0.0 (2024-09-04)
+
+* update to mirage-crypto 1.0.0 and x509 1.0.0 API (#34 @hannesm)
+* package moved to the robur-coop organization
+
 # v0.5.1 (2023-03-13)
 
 * letsencrypt-mirage: allow alpn protocols to be specified (#33 @dinosaure)
