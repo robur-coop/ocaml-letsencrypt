@@ -9,7 +9,7 @@ homepage: "https://github.com/robur-coop/ocaml-letsencrypt"
 bug-reports: "https://github.com/robur-coop/ocaml-letsencrypt/issues"
 doc: "https://robur-coop.github.io/ocaml-letsencrypt"
 depends: [
-  "ocaml" {>= "4.08.0"}
+  "ocaml" {>= "4.13.0"}
   "dune" {>= "1.2.0"}
   "letsencrypt" {= version}
   "http-mirage-client"
