@@ -25,7 +25,7 @@
           LE.provision_certificate
             ~production:false
             configuration
-            ctx 
+            ctx
           >>= fun certificates ->
           Lwt_switch.turn_off stop >>= fun () ->
           Lwt.return certificates in
@@ -49,7 +49,7 @@ type configuration = {
   account_key_bits : int option;
 }
 
-module Make (Time : Mirage_time.S) (Stack : Tcpip.Stack.V4V6) : sig
+module Make (Stack : Tcpip.Stack.V4V6) : sig
   type nonrec configuration = configuration = {
     email : Emile.mailbox option;
     certificate_seed : string option;
@@ -62,7 +62,7 @@ module Make (Time : Mirage_time.S) (Stack : Tcpip.Stack.V4V6) : sig
   }
 
   val request_handler :
-    Ipaddr.t * int -> Httpaf.Server_connection.request_handler
+    Ipaddr.t * int -> H1.Server_connection.request_handler
 
   val provision_certificate :
     ?tries:int ->

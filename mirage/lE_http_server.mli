@@ -6,12 +6,7 @@
     offered by Let's encrypt). The [.well-known/*] path is therefore used and
     the user {b should not} define such a route. *)
 
-module Make
-    (Time : Mirage_time.S)
-    (Stack : Tcpip.Stack.V4V6)
-    (Random : Mirage_crypto_rng_mirage.S)
-    (Mclock : Mirage_clock.MCLOCK)
-    (Pclock : Mirage_clock.PCLOCK) : sig
+module Make (Stack : Tcpip.Stack.V4V6): sig
   val get_certificates :
     yes_my_port_80_is_reachable_and_unused:Stack.t ->
     production:bool ->

@@ -19,13 +19,14 @@ depends: [
   "mirage-crypto" {>= "1.0.0"}
   "mirage-crypto-ec" {>= "1.0.0"}
   "mirage-crypto-pk" {>= "1.0.0"}
-  "mirage-crypto-rng" {with-test & >= "1.0.0"}
+  "mirage-crypto-rng" {with-test & >= "1.2.0"}
   "digestif" {>= "1.2.0"}
   "x509" {>= "1.0.0"}
   "yojson" {>= "1.6.0"}
   "ounit2" {with-test}
   "ptime"
   "domain-name" {>= "0.2.0"}
+  "asn1-combinators" {>= "0.3.2"}
 ]
 conflicts: [ "result" {< "1.5"} ]
 build: [
