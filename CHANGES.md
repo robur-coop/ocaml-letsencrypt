@@ -1,3 +1,7 @@
+# v1.1.0 (2025-02-27)
+
+* Defunctorise, update to paf 0.8.0 (#35 @hannesm)
+
 # v1.0.0 (2024-09-04)
 
 * update to mirage-crypto 1.0.0 and x509 1.0.0 API (#34 @hannesm)
