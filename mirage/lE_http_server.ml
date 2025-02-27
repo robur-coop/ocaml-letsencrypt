@@ -3,18 +3,14 @@ open Lwt.Infix
 let msgf fmt = Fmt.kstr (fun msg -> `Msg msg) fmt
 
 let pp_error ppf = function
-  | #Httpaf.Status.t as code -> Httpaf.Status.pp_hum ppf code
+  | #H1.Status.t as code -> H1.Status.pp_hum ppf code
   | `Exn exn -> Fmt.pf ppf "exception %s" (Printexc.to_string exn)
 
 module Make
-    (Time : Mirage_time.S)
-    (Stack : Tcpip.Stack.V4V6)
-    (Random : Mirage_crypto_rng_mirage.S)
-    (Mclock : Mirage_clock.MCLOCK)
-    (Pclock : Mirage_clock.PCLOCK) =
+    (Stack : Tcpip.Stack.V4V6) =
 struct
   module Paf = Paf_mirage.Make (Stack.TCP)
-  module LE = LE.Make (Time) (Stack)
+  module LE = LE.Make (Stack)
 
   let get_certificates ~yes_my_port_80_is_reachable_and_unused:stackv4v6
       ~production config http =
@@ -24,7 +20,7 @@ struct
       let error_handler _dst ?request err _ =
         Logs.err (fun m ->
             m "error %a while processing request %a" pp_error err
-              Fmt.(option ~none:(any "unknown") Httpaf.Request.pp_hum)
+              Fmt.(option ~none:(any "unknown") H1.Request.pp_hum)
               request) in
       let stop = Lwt_switch.create () in
       (Paf.serve ~stop (Paf.http_service ~error_handler request_handler) t, stop)
@@ -39,9 +35,9 @@ struct
     Lwt.both web_server provision_certificate >|= snd
 
   let redirect config tls_port reqd =
-    let request = Httpaf.Reqd.request reqd in
+    let request = H1.Reqd.request reqd in
     let host =
-      match Httpaf.Headers.get request.Httpaf.Request.headers "host" with
+      match H1.Headers.get request.H1.Request.headers "host" with
       | Some host -> host
       | None -> Domain_name.to_string config.LE.hostname in
     let response =
@@ -49,12 +45,12 @@ struct
       let uri =
         Fmt.str "https://%s%a%s" host
           Fmt.(option ~none:nop (fmt ":%d"))
-          port request.Httpaf.Request.target in
+          port request.H1.Request.target in
       let headers =
-        Httpaf.Headers.of_list [ ("location", uri); ("connection", "close") ]
+        H1.Headers.of_list [ ("location", uri); ("connection", "close") ]
       in
-      Httpaf.Response.create ~headers `Moved_permanently in
-    Httpaf.Reqd.respond_with_string reqd response ""
+      H1.Response.create ~headers `Moved_permanently in
+    H1.Reqd.respond_with_string reqd response ""
 
   let info =
     let module R = (val Mimic.repr Paf.tls_protocol) in
@@ -91,7 +87,7 @@ struct
               Lwt.return_unit)
           >>= fun () ->
           (* TODO(dinosaure): should we [reneg] all previous connections? *)
-          Time.sleep_ns (Duration.of_day 80) >>= fill_certificates in
+          Mirage_sleep.ns (Duration.of_day 80) >>= fill_certificates in
 
     let handshake tcp =
       Lwt_mutex.with_lock mutex (fun () -> Lwt.return !certificates)
@@ -118,14 +114,14 @@ struct
     in
     let http_service =
       let request_handler _ edn reqd =
-        let request = Httpaf.Reqd.request reqd in
-        match String.split_on_char '/' request.Httpaf.Request.target with
+        let request = H1.Reqd.request reqd in
+        match String.split_on_char '/' request.H1.Request.target with
         | [ ""; _p1; _p2; _token ] -> LE.request_handler edn reqd
         | _ -> redirect config port reqd in
       let error_handler _dst ?request err _ =
         Logs.err (fun m ->
             m "error %a while processing request %a" pp_error err
-              Fmt.(option ~none:(any "unknown") Httpaf.Request.pp_hum)
+              Fmt.(option ~none:(any "unknown") H1.Request.pp_hum)
               request) in
       Paf.http_service ~error_handler request_handler in
 

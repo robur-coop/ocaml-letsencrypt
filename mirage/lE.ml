@@ -71,7 +71,7 @@ end
 module Log = (val let src = Logs.Src.create "letsencrypt.mirage" in
               Logs.src_log src : Logs.LOG)
 
-module Make (Time : Mirage_time.S) (Stack : Tcpip.Stack.V4V6) = struct
+module Make (Stack : Tcpip.Stack.V4V6) = struct
   type nonrec configuration = configuration = {
     email : Emile.mailbox option;
     certificate_seed : string option;
@@ -104,33 +104,33 @@ module Make (Time : Mirage_time.S) (Stack : Tcpip.Stack.V4V6) = struct
     Lwt.return (Ok ())
 
   let request_handler (ipaddr, port) reqd =
-    let req = Httpaf.Reqd.request reqd in
+    let req = H1.Reqd.request reqd in
     Log.debug (fun m ->
         m "Let's encrypt request handler for %a:%d (%s)" Ipaddr.pp ipaddr port
-          req.Httpaf.Request.target) ;
-    match String.split_on_char '/' req.Httpaf.Request.target with
+          req.H1.Request.target) ;
+    match String.split_on_char '/' req.H1.Request.target with
     | [ ""; p1; p2; token ]
       when String.equal p1 (fst prefix) && String.equal p2 (snd prefix) -> (
         match Hashtbl.find_opt tokens token with
         | Some data ->
             Log.debug (fun m -> m "Be able to respond to let's encrypt!") ;
             let headers =
-              Httpaf.Headers.of_list
+              H1.Headers.of_list
                 [
                   ("content-type", "application/octet-stream");
                   ("content-length", string_of_int (String.length data));
                 ] in
-            let resp = Httpaf.Response.create ~headers `OK in
-            Httpaf.Reqd.respond_with_string reqd resp data
+            let resp = H1.Response.create ~headers `OK in
+            H1.Reqd.respond_with_string reqd resp data
         | None ->
             Log.warn (fun m -> m "Token %S not found!" token) ;
-            let headers = Httpaf.Headers.of_list [ ("connection", "close") ] in
-            let resp = Httpaf.Response.create ~headers `Not_found in
-            Httpaf.Reqd.respond_with_string reqd resp "")
+            let headers = H1.Headers.of_list [ ("connection", "close") ] in
+            let resp = H1.Response.create ~headers `Not_found in
+            H1.Reqd.respond_with_string reqd resp "")
     | _ ->
-        let headers = Httpaf.Headers.of_list [ ("connection", "close") ] in
-        let resp = Httpaf.Response.create ~headers `Not_found in
-        Httpaf.Reqd.respond_with_string reqd resp ""
+        let headers = H1.Headers.of_list [ ("connection", "close") ] in
+        let resp = H1.Response.create ~headers `Not_found in
+        H1.Reqd.respond_with_string reqd resp ""
 
   let provision_certificate ?(tries = 10) ?(production = false) cfg ctx =
     let ( >>? ) = Lwt_result.bind in
@@ -153,7 +153,7 @@ module Make (Time : Mirage_time.S) (Stack : Tcpip.Stack.V4V6) = struct
           account_key
         >>? fun le ->
         Log.debug (fun m -> m "Let's encrypt state initialized.") ;
-        let sleep sec = Time.sleep_ns (Duration.of_sec sec) in
+        let sleep sec = Mirage_sleep.ns (Duration.of_sec sec) in
         let solver = Letsencrypt.Client.http_solver solver in
         let rec go tries =
           Acme.sign_certificate ~ctx solver le sleep csr >>= function

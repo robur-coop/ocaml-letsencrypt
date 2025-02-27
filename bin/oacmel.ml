@@ -30,7 +30,7 @@ let doit email endpoint account_key solver sleep csr =
   | Error e -> Lwt.return_error e
 
 let main _ priv_pem csr_pem email solver acme_dir ip key endpoint cert zone =
-  Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna) ;
+  Mirage_crypto_rng_unix.use_default ();
   let r =
     let ( let* ) = Result.bind in
     let priv_pem, csr_pem, cert = Fpath.(v priv_pem, v csr_pem, v cert) in

@@ -5,5 +5,5 @@ let () =
     B64u_test.all_tests @ Jwk_test.all_tests @ Jws_test.all_tests
   in
   let suite = "suite">::: tests in
-  Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna);
+  Mirage_crypto_rng_unix.use_default ();
   run_test_tt_main suite
