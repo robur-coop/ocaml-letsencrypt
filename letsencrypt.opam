@@ -26,6 +26,7 @@ depends: [
   "ounit2" {with-test}
   "ptime"
   "domain-name" {>= "0.2.0"}
+  "asn1-combinators" {>= "0.3.2"}
 ]
 conflicts: [ "result" {< "1.5"} ]
 build: [

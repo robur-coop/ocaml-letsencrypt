@@ -23,6 +23,7 @@ depends: [
   "bos"
   "fpath"
   "randomconv" {>= "0.2.0"}
+  "ipaddr" {>= "5.6.0"}
 ]
 build: [
   ["dune" "subst"] {dev}
