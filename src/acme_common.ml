@@ -4,7 +4,11 @@ let letsencrypt_production_url =
 let letsencrypt_staging_url =
   Uri.of_string "https://acme-staging-v02.api.letsencrypt.org/directory"
 
-let sha256_and_base64 a = Primitives.sha256 a |> B64u.urlencode
+let sha256_and_base64 a =
+  let open Digestif.SHA256 in
+  let a = digest_string a in
+  let a = to_raw_string a in
+  Jws.Base64u.encode a
 
 let ( let* ) = Result.bind
 
@@ -51,19 +55,6 @@ let opt_string_val key json =
   | `Null -> Ok None
   | _ -> err_msg "opt_string" key json
 
-let json_val member json =
-  match J.Util.member member json with
-  | `Assoc j -> Ok (`Assoc j)
-  | _ -> err_msg "json object" member json
-
-let b64_z_val member json =
-  let* s = string_val member json in
-  B64u.urldecodez s
-
-let b64_string_val member json =
-  let* s = string_val member json in
-  B64u.urldecode s
-
 let assoc_val key json =
   match J.Util.member key json with
   | `Assoc _ | `Null as x -> Ok x
@@ -104,184 +95,6 @@ let maybe f = function
   | Some s ->
     let* s' = f s in
     Ok (Some s')
-
-module Jwk = struct
-  type key = X509.Public_key.t
-
-  let encode = function
-    | `RSA key ->
-      let e, n = Primitives.pub_to_z key in
-      `Assoc [
-        "e", `String (B64u.urlencodez e);
-        "kty", `String "RSA";
-        "n", `String (B64u.urlencodez n);
-      ]
-    | `P256 key ->
-      let cs = Mirage_crypto_ec.P256.Dsa.pub_to_octets key in
-      let x, y = String.sub cs 1 32, String.sub cs 33 32 in
-      `Assoc [
-        "crv", `String "P-256";
-        "kty", `String "EC";
-        "x", `String (B64u.urlencode x);
-        "y", `String (B64u.urlencode y);
-      ]
-    | `P384 key ->
-      let cs = Mirage_crypto_ec.P384.Dsa.pub_to_octets key in
-      let x, y = String.sub cs 1 48, String.sub cs 49 48 in
-      `Assoc [
-        "crv", `String "P-384";
-        "kty", `String "EC";
-        "x", `String (B64u.urlencode x);
-        "y", `String (B64u.urlencode y);
-      ]
-    | `P521 key ->
-      let cs = Mirage_crypto_ec.P521.Dsa.pub_to_octets key in
-      let x, y = String.sub cs 1 66, String.sub cs 67 66 in
-      `Assoc [
-        "crv", `String "P-521";
-        "kty", `String "EC";
-        "x", `String (B64u.urlencode x);
-        "y", `String (B64u.urlencode y);
-      ]
-    | _ -> assert false
-
-  let decode_json json =
-    let* kty = string_val "kty" json in
-    match kty with
-    | "RSA" ->
-      let* e = b64_z_val "e" json in
-      let* n = b64_z_val "n" json in
-      let* pub = Primitives.pub_of_z ~e ~n in
-      Ok (`RSA pub)
-    | "EC" ->
-      let four = String.make 1 '\004' in
-      let* x = b64_string_val "x" json in
-      let* y = b64_string_val "y" json in
-      let* crv = string_val "crv" json in
-      begin match crv with
-        | "P-256" ->
-          let* pub =
-            Result.map_error
-              (fun e -> `Msg (Fmt.to_to_string Mirage_crypto_ec.pp_error e))
-              (Mirage_crypto_ec.P256.Dsa.pub_of_octets
-                 (String.concat "" [ four ; x ; y ]))
-          in
-          Ok (`P256 pub)
-        | "P-384" ->
-          let* pub =
-            Result.map_error
-              (fun e -> `Msg (Fmt.to_to_string Mirage_crypto_ec.pp_error e))
-              (Mirage_crypto_ec.P384.Dsa.pub_of_octets
-                 (String.concat "" [ four ; x ; y ]))
-          in
-          Ok (`P384 pub)
-        | "P-521" ->
-          let* pub =
-            Result.map_error
-              (fun e -> `Msg (Fmt.to_to_string Mirage_crypto_ec.pp_error e))
-              (Mirage_crypto_ec.P521.Dsa.pub_of_octets
-                 (String.concat "" [ four ; x ; y ]))
-          in
-          Ok (`P521 pub)
-        | x -> Error (`Msg (Fmt.str "unknown EC curve %s" x))
-      end
-    | x -> Error (`Msg (Fmt.str "unknown key type %s" x))
-
-  let decode data =
-    let* json = of_string data in
-    decode_json json
-
-  let thumbprint pub_key =
-    let jwk = json_to_string (encode pub_key) in
-    let h = Primitives.sha256 jwk in
-    B64u.urlencode h
-end
-
-module Jws = struct
-  type header = {
-    alg : string;
-    nonce : string option;
-    jwk : Jwk.key option;
-  }
-
-  let encode ?(protected = []) ~data ?nonce priv =
-    let alg, hash = match priv with
-      | `RSA _ -> "RS256", `SHA256
-      | `P256 _ -> "ES256", `SHA256
-      | `P384 _ -> "ES384", `SHA384
-      | `P521 _ -> "ES512", `SHA512
-      | _ -> assert false
-    in
-    let protected =
-      let n = match nonce with None -> [] | Some x -> [ "nonce", `String x ] in
-      `Assoc (("alg", `String alg) :: protected @ n) |> json_to_string
-    in
-    let protected = protected |> B64u.urlencode in
-    let payload = B64u.urlencode data in
-    let signature =
-      let m = protected ^ "." ^ payload in
-      Primitives.sign hash priv m |> B64u.urlencode
-    in
-    let json =
-      `Assoc [
-        "protected", `String protected ;
-        "payload", `String payload ;
-        "signature", `String signature
-      ]
-    in
-    json_to_string ~comma:", " ~colon:": " json
-
-  let encode_acme ?kid_url ~data ?nonce url priv =
-    let kid_or_jwk =
-      match kid_url with
-      | None -> "jwk", Jwk.encode (X509.Private_key.public priv)
-      | Some url -> "kid", `String (Uri.to_string url)
-    in
-    let url = "url", `String (Uri.to_string url) in
-    let protected = [ kid_or_jwk ; url ] in
-    encode ~protected ~data ?nonce priv
-
-  let decode_header protected_header =
-    let* protected = of_string protected_header in
-    let* jwk =
-      match json_val "jwk" protected with
-      | Ok key ->
-        let* k = Jwk.decode_json key in
-        Ok (Some k)
-      | Error _ -> Ok None
-    in
-    let* alg = string_val "alg" protected in
-    let nonce = Result.to_option (string_val "nonce" protected) in
-    Ok { alg ; nonce ; jwk }
-
-  let decode ?pub data =
-    let* jws = of_string data in
-    let* protected64 = string_val "protected" jws in
-    let* payload64 = string_val "payload" jws in
-    let* signature = b64_string_val "signature" jws in
-    let* protected = B64u.urldecode protected64 in
-    let* header = decode_header protected in
-    let* payload = B64u.urldecode payload64 in
-    let* pub =
-      match pub, header.jwk with
-      | Some pub, _ -> Ok pub
-      | None, Some pub -> Ok pub
-      | None, None -> Error (`Msg "no public key found")
-    in
-    let verify m s =
-      match header.alg with
-      | "RS256" -> Primitives.verify `SHA256 pub m s
-      | "ES256" -> Primitives.verify `SHA256 pub m s
-      | "ES384" -> Primitives.verify `SHA384 pub m s
-      | "ES512" -> Primitives.verify `SHA512 pub m s
-      | _ -> false
-    in
-    let m = protected64 ^ "." ^ payload64 in
-    if verify m signature then
-      Ok (header, payload)
-    else
-      Error (`Msg "signature verification failed")
-end
 
 let uri s = Ok (Uri.of_string s)
 

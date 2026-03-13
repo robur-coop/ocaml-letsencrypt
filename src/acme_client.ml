@@ -11,7 +11,8 @@ let guard p err = if p then Ok () else Error err
 
 let key_authorization key token =
   let pk = X509.Private_key.public key in
-  let thumbprint = Jwk.thumbprint pk in
+  let pk = Jws.Jwk.of_public_key_exn pk in
+  let thumbprint = Jws.Jwk.signature pk in
   Printf.sprintf "%s.%s" token thumbprint
 
 type t = {
@@ -61,7 +62,8 @@ let alpn_solver ?(key_type = `RSA) ?(bits = 2048) writef =
   let solve_challenge ~token:_ ~key_authorization domain =
     let open X509 in
     let priv = Private_key.generate ~bits key_type in
-    let solution = Primitives.sha256 key_authorization in
+    let solution = Digestif.SHA256.digest_string key_authorization in
+    let solution = Digestif.SHA256.to_raw_string solution in
     let name = Domain_name.to_string domain in
     let cn = Distinguished_name.CN name in
     let dn = [ Distinguished_name.Relative_distinguished_name.singleton cn ] in
@@ -141,8 +143,10 @@ let get_nonce ?ctx url =
 
 let rec http_post_jws ?ctx ?(no_key_url = false) cli data url =
   let prepare_post key nonce =
-    let kid_url = if no_key_url then None else Some cli.account_url in
-    let body = Jws.encode_acme ?kid_url ~data:(json_to_string data) ~nonce url key in
+    let kid = if no_key_url then None else Some (Uri.to_string cli.account_url) in
+    let extra = Jws.S.singleton "url" (Jsont.Json.string (Uri.to_string url)) in
+    let key = Jws.Pk.of_private_key_exn key in
+    let body = Jws.encode ?kid ~extra ~nonce key (json_to_string data) in
     let body_len = string_of_int (String.length body) in
     let headers = Http.Headers.add headers  "Content-Length" body_len in
     let headers = Http.Headers.add headers "Content-Type" "application/jose+json" in
@@ -320,10 +324,10 @@ let process_authorization ?ctx solver cli sleep url =
       let open Lwt_result.Infix in
       Lwt_result.lift (Authorization.decode body) >>= fun auth ->
       Log.info (fun m -> m "authorization %a" Authorization.pp auth);
-      match auth.authorization_status with
-      | `Pending -> (* we need to work on some challenge here! *)
-        let host = Domain_name.(host_exn @@ of_string_exn @@ snd auth.identifier) in
-        begin match List.filter (fun c -> c.Challenge.challenge_typ = solver.typ) auth.challenges with
+      match auth.status with
+      | Pending -> (* we need to work on some challenge here! *)
+        let host = Domain_name.(host_exn @@ of_string_exn @@ auth.identifier) in
+        begin match List.filter (fun c -> c.Challenge.typ = solver.typ) auth.challenges with
           | [] ->
             Log.err (fun m -> m "no challenge found for solver");
             Lwt.return (Error (`Msg "couldn't find a challenge that matches the provided solver"))
@@ -354,7 +358,7 @@ let process_authorization ?ctx solver cli sleep url =
 let finalize ?ctx cli csr url =
   let body =
     let csr_as_b64 =
-      X509.Signing_request.encode_der csr |> B64u.urlencode
+      X509.Signing_request.encode_der csr |> Jws.Base64u.encode
     in
     `Assoc [ "csr", `String csr_as_b64 ]
   in
