@@ -8,48 +8,6 @@ type json = Yojson.Basic.t
 
 val json_to_string : ?comma:string -> ?colon:string -> json -> string
 
-module Jwk : sig
-  (** [Jwk]: Json Web Key.
-
-      Jwk is an implementation of the Json Web Key standard (RFC7638).
-  *)
-
-  (** [key] identifies a key. *)
-  type key = X509.Public_key.t
-
-  val thumbprint : key -> string
-  (** [thumbprint key] produces the JWK thumbprint of [key]. *)
-
-  val encode : key -> json
-
-  val decode : string -> (key, [> `Msg of string ]) result
-end
-
-module Jws : sig
-  (** [Jws]: Json Web Signatures.
-
-      Jws is an implementation of the Json Web Signature Standard (RFC7515).
-      Currently, encoding and decoding operations only support the RS256
-      algorithm; specifically the encoding operation is a bit rusty, and probably
-      its interface will change in the future.  *)
-
-  (** type [header] records information about the header. *)
-  type header = {
-    alg : string;
-    nonce : string option;
-    jwk : Jwk.key option;
-  }
-
-  val encode_acme : ?kid_url:Uri.t -> data:string -> ?nonce:string -> Uri.t ->
-    X509.Private_key.t -> string
-
-  val encode : ?protected:(string * json) list -> data:string ->
-    ?nonce:string -> X509.Private_key.t -> string
-
-  val decode : ?pub:Jwk.key -> string ->
-    (header * string, [> `Msg of string ]) result
-end
-
 module Directory : sig
   (** ACME json data types, as defined in RFC 8555 *)
 
