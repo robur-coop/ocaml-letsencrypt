@@ -24,9 +24,10 @@ module HTTP_client = HTTP_client
  *)
 module Client: sig
   type t
+  type challenge = DNS | HTTP | ALPN
 
   type solver = {
-    typ : [ `Dns | `Http | `Alpn ];
+    typ : challenge;
     solve_challenge : token:string -> key_authorization:string ->
       [`host] Domain_name.t -> (unit, [ `Msg of string]) result Lwt.t;
   }

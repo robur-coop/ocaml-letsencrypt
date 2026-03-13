@@ -10,7 +10,7 @@ let sha256_and_base64 a =
   let a = to_raw_string a in
   Jws.Base64u.encode a
 
-let ( let* ) = Result.bind
+let error_msgf fmt = Fmt.kstr (fun msg -> Error (`Msg msg)) fmt
 
 module J = Yojson.Basic
 
@@ -36,475 +36,675 @@ let rec json_to_string ?(comma = ",") ?(colon = ":") : J.t -> string = function
     let s = List.map serialize_pair a in
     Printf.sprintf {|{%s}|} (String.concat comma s)
 
-let of_string s =
-  try Ok (J.from_string s) with
-    Yojson.Json_error str -> Error (`Msg str)
-
-let err_msg typ name json =
-  Error (`Msg (Fmt.str "couldn't find %s %s in %s" typ name (J.to_string json)))
-
-(* decoders *)
-let string_val key json =
-  match J.Util.member key json with
-  | `String s -> Ok s
-  | _ -> err_msg "string" key json
-
-let opt_string_val key json =
-  match J.Util.member key json with
-  | `String s -> Ok (Some s)
-  | `Null -> Ok None
-  | _ -> err_msg "opt_string" key json
-
-let assoc_val key json =
-  match J.Util.member key json with
-  | `Assoc _ | `Null as x -> Ok x
-  | _ -> err_msg "assoc" key json
-
-let list_val key json =
-  match J.Util.member key json with
-  | `List l -> Ok l
-  | _ -> err_msg "list" key json
-
-let opt_string_list key json =
-  match J.Util.member key json with
-  | `List l ->
-    let xs =
-      List.fold_left
-        (fun acc -> function `String s -> s :: acc | _ -> acc)
-        [] l
-    in
-    Ok (Some xs)
-  | `Null -> Ok None
-  | _ -> err_msg "string list" key json
-
-let opt_bool key json =
-  match J.Util.member key json with
-  | `Bool b -> Ok (Some b)
-  | `Null -> Ok None
-  | _ -> err_msg "opt bool" key json
-
-let decode_ptime str =
-  match Ptime.of_rfc3339 str with
-  | Ok (ts, _, _) -> Ok ts
-  | Error `RFC3339 (_, err) ->
-    Error (`Msg (Fmt.str "couldn't parse %s as rfc3339 %a"
-                   str Ptime.pp_rfc3339_error err))
-
-let maybe f = function
-  | None -> Ok None
-  | Some s ->
-    let* s' = f s in
-    Ok (Some s')
-
-let uri s = Ok (Uri.of_string s)
+module S = Map.Make (String)
 
 module Directory = struct
-  type meta = {
-    terms_of_service : Uri.t option;
-    website : Uri.t option;
-    caa_identities : string list option;
-    (* external_account_required *)
-  }
+  type meta =
+    { termsOfService : string option
+    ; website : string option
+    ; caaIdentities : string list
+    ; externalAccountRequired : bool }
 
-  let pp_meta ppf { terms_of_service ; website ; caa_identities } =
-    Fmt.pf ppf "terms of service: %a@,website %a@,caa identities %a"
-      Fmt.(option ~none:(any "no tos") Uri.pp_hum) terms_of_service
-      Fmt.(option ~none:(any "no website") Uri.pp_hum) website
-      Fmt.(option ~none:(any "no CAA") (list ~sep:(any ", ") string))
-      caa_identities
+  type t =
+    { newAccount : string
+    ; newNonce : string
+    ; newOrder : string 
+    ; revokeCert : string
+    ; keyChange : string
+    ; newAuthz : string option
+    ; meta : meta option }
 
-  let meta_of_json = function
-    | `Assoc _ as json ->
-      let* terms_of_service =
-        let* tos = opt_string_val "termsOfService" json in
-        maybe uri tos
-      in
-      let* website =
-        let* w = opt_string_val "website" json in
-        maybe uri w
-      in
-      let* caa_identities = opt_string_list "caaIdentities" json in
-      Ok (Some { terms_of_service ; website ; caa_identities })
-    | _ -> Ok None
+  module Optics = struct
+    let termsOfService () =
+      Lun.lense
+        (fun { termsOfService; _ } -> termsOfService)
+        (fun t termsOfService -> { t with termsOfService })
 
-  type t = {
-    new_nonce : Uri.t;
-    new_account : Uri.t;
-    new_order : Uri.t;
-    new_authz : Uri.t option;
-    revoke_cert : Uri.t;
-    key_change : Uri.t;
-    meta : meta option;
-  }
+    let website () =
+      Lun.lense
+        (fun { website; _ } -> website)
+        (fun t website -> { t with website })
 
-  let pp ppf dir =
-    Fmt.pf ppf "new nonce %a@,new account %a@,new order %a@,new authz %a@,revoke cert %a@,key change %a@,meta %a"
-      Uri.pp_hum dir.new_nonce Uri.pp_hum dir.new_account Uri.pp_hum dir.new_order
-      Fmt.(option ~none:(any "no authz") Uri.pp_hum) dir.new_authz
-      Uri.pp_hum dir.revoke_cert Uri.pp_hum dir.key_change
-      Fmt.(option ~none:(any "no meta") pp_meta) dir.meta
+    let caaIdentities () =
+      Lun.lense
+        (fun { caaIdentities; _ } -> caaIdentities)
+        (fun t caaIdentities -> { t with caaIdentities })
 
-  let decode s =
-    let* json = of_string s in
-    let* new_nonce =
-      let* nn = string_val "newNonce" json in
-      uri nn
-    in
-    let* new_account =
-      let* na = string_val "newAccount" json in
-      uri na
-    in
-    let* new_order =
-      let* no = string_val "newOrder" json in
-      uri no
-    in
-    let* new_authz =
-      let* na = opt_string_val "newAuthz" json in
-      maybe uri na
-    in
-    let* revoke_cert =
-      let* rc = string_val "revokeCert" json in
-      uri rc
-    in
-    let* key_change =
-      let* kc = string_val "keyChange" json in
-      uri kc
-    in
-    let* meta =
-      let* m = assoc_val "meta" json in
-      meta_of_json m
-    in
-    Ok { new_nonce ; new_account ; new_order ; new_authz ; revoke_cert ;
-         key_change ; meta }
+    let externalAccountRequired () =
+      Lun.lense
+        (fun { externalAccountRequired; _ } -> externalAccountRequired)
+        (fun t externalAccountRequired -> { t with externalAccountRequired })
+
+    let newAccount () =
+      Lun.lense
+        (fun { newAccount; _ } -> newAccount)
+        (fun t newAccount -> { t with newAccount })
+
+    let newNonce () =
+      Lun.lense
+        (fun { newNonce; _ } -> newNonce)
+        (fun t newNonce -> { t with newNonce })
+
+    let newOrder () =
+      Lun.lense
+        (fun { newOrder; _ } -> newOrder)
+        (fun t newOrder -> { t with newOrder })
+
+    let revokeCert () =
+      Lun.lense
+        (fun { revokeCert; _ } -> revokeCert)
+        (fun t revokeCert -> { t with revokeCert })
+
+    let keyChange () =
+      Lun.lense
+        (fun { keyChange; _ } -> keyChange)
+        (fun t keyChange -> { t with keyChange })
+
+    let newAuthz () =
+      Lun.lense
+        (fun { newAuthz; _ } -> newAuthz)
+        (fun t newAuthz -> { t with newAuthz })
+    
+    let meta () =
+      Lun.lense
+        (fun { meta; _ } -> meta)
+        (fun t meta -> { t with meta })
+  end
+
+  let meta =
+    let open Jsont in
+    let termsOfService =
+      let enc = Lun.get Optics.termsOfService in
+      Object.opt_mem "termsOfService" ~enc string in
+    let website =
+      let enc = Lun.get Optics.website in
+      Object.opt_mem "website" ~enc string in
+    let caaIdentities =
+      let enc = Lun.get Optics.caaIdentities in
+      let dec_absent = [] in
+      let enc_omit = List.is_empty in
+      Object.mem "caaIdentities" ~enc ~dec_absent ~enc_omit (list string) in
+    let externalAccountRequired =
+      let enc = Lun.get Optics.externalAccountRequired in
+      let dec_absent = false in
+      let enc_omit = Fun.negate Fun.id in
+      Object.mem "externalAccountRequired" ~enc ~dec_absent ~enc_omit bool in
+    let fn termsOfService website caaIdentities externalAccountRequired =
+      { termsOfService; website; caaIdentities; externalAccountRequired } in
+    Object.map fn
+    |> termsOfService
+    |> website
+    |> caaIdentities
+    |> externalAccountRequired
+    |> Object.finish
+
+  let t =
+    let open Jsont in
+    let newAccount =
+      let enc = Lun.get Optics.newAccount in
+      Object.mem "newAccount" ~enc string in
+    let newNonce =
+      let enc = Lun.get Optics.newNonce in
+      Object.mem "newNonce" ~enc string in
+    let newOrder =
+      let enc = Lun.get Optics.newOrder in
+      Object.mem "newOrder" ~enc string in
+    let revokeCert =
+      let enc = Lun.get Optics.revokeCert in
+      Object.mem "revokeCert" ~enc string in
+    let keyChange =
+      let enc = Lun.get Optics.keyChange in
+      Object.mem "keyChange" ~enc string in
+    let newAuthz =
+      let enc = Lun.get Optics.newAuthz in
+      Object.opt_mem "newAuthz" ~enc string in
+    let meta =
+      let enc = Lun.get Optics.meta in
+      Object.opt_mem "meta" ~enc meta in
+    let fn newAccount newNonce newOrder revokeCert keyChange newAuthz meta =
+      { newAccount; newNonce; newOrder; revokeCert; keyChange; newAuthz; meta } in
+    Object.map fn
+    |> newAccount
+    |> newNonce
+    |> newOrder
+    |> revokeCert
+    |> keyChange
+    |> newAuthz
+    |> meta
+    |> Object.finish
+
+  let decode str =
+    match Jsont_bytesrw.decode_string t str with
+    | Ok t -> Ok t
+    | Error _ -> error_msgf "Invalid directory object"
 end
 
 module Account = struct
-  type t = {
-    account_status : [ `Valid | `Deactivated | `Revoked ];
-    contact : string list option;
-    terms_of_service_agreed : bool option;
-    (* externalAccountBinding *)
-    orders : Uri.t option;
-    initial_ip : string option;
-    created_at : Ptime.t option;
-  }
+  type status =
+    | Valid
+    | Deactivated
+    | Revoked
+
+  let status =
+    let valid = "valid", Valid
+    and deactived = "deactived", Deactivated
+    and revoked = "revoked", Revoked in
+    Jsont.enum [ valid; deactived; revoked ]
+
+  type t =
+    { status : status
+    ; contact : string list
+    ; termsOfServiceAgreed : bool
+    ; orders : string }
 
   let pp_status ppf s =
     Fmt.string ppf (match s with
-        | `Valid -> "valid"
-        | `Deactivated -> "deactivated"
-        | `Revoked -> "revoked")
+        | Valid -> "valid"
+        | Deactivated -> "deactivated"
+        | Revoked -> "revoked")
 
   let pp ppf a =
-    Fmt.pf ppf "status %a@,contact %a@,terms of service agreed %a@,orders %a@,initial IP %a@,created %a"
-      pp_status a.account_status
-      Fmt.(option ~none:(any "no contact") (list ~sep:(any ", ") string))
+    Fmt.pf ppf "status %a@,contact %a@,terms of service agreed %b@,orders %s"
+      pp_status a.status
+      Fmt.(list ~sep:(any ", ") string)
       a.contact
-      Fmt.(option ~none:(any "unknown") bool) a.terms_of_service_agreed
-      Fmt.(option ~none:(any "unknown") Uri.pp_hum) a.orders
-      Fmt.(option ~none:(any "unknown") string) a.initial_ip
-      Fmt.(option ~none:(any "unknown") (Ptime.pp_rfc3339 ())) a.created_at
+      a.termsOfServiceAgreed
+      a.orders
 
-  let status_of_string = function
-    | "valid" -> Ok `Valid
-    | "deactivated" -> Ok `Deactivated
-    | "revoked" -> Ok `Revoked
-    | s -> Error (`Msg (Fmt.str "unknown account status %s" s))
+  module Optics = struct
+    let status () =
+      Lun.lense
+        (fun { status; _ } -> status)
+        (fun t status -> { t with status })
 
-  (* "it's fine to not have a 'required' orders array" (in contrast to 8555)
-     and seen in the wild when creating an account, or retrieving the account url
-     of a key, or even fetching the account url. all with an account that never
-     ever did an order... it seems to be a discrepancy from LE servers and
-     RFC 8555 *)
-  (* https://github.com/letsencrypt/boulder/blob/master/docs/acme-divergences.md
-     or https://github.com/letsencrypt/boulder/issues/3335 contains more
-     information *)
+    let contact () =
+      Lun.lense
+        (fun { contact; _ } -> contact)
+        (fun t contact -> { t with contact })
+
+    let termsOfServiceAgreed () =
+      Lun.lense
+        (fun { termsOfServiceAgreed; _ } -> termsOfServiceAgreed)
+        (fun t termsOfServiceAgreed -> { t with termsOfServiceAgreed })
+
+    let orders () =
+      Lun.lense
+        (fun { orders; _ } -> orders)
+        (fun t orders -> { t with orders })
+  end
+
+  let t =
+    let open Jsont in
+    let status =
+      let enc = Lun.get Optics.status in
+      Object.mem "status" ~enc status in
+    let contact =
+      let enc = Lun.get Optics.contact in
+      Object.mem "contact" ~enc (list string) in
+    let termsOfServiceAgreed =
+      let enc = Lun.get Optics.termsOfServiceAgreed in
+      let dec_absent = false in
+      let enc_omit = Fun.negate Fun.id in
+      Object.mem "termsOfServiceAgreed" ~enc ~dec_absent ~enc_omit bool in
+    let orders =
+      let enc = Lun.get Optics.orders in
+      Object.mem "orders" ~enc string in
+    let fn status contact termsOfServiceAgreed orders =
+      { status; contact; termsOfServiceAgreed; orders } in
+    Object.map fn
+    |> status
+    |> contact
+    |> termsOfServiceAgreed
+    |> orders
+    |> Object.finish
+
   let decode str =
-    let* json = of_string str in
-    let* account_status =
-      let* s = string_val "status" json in
-      status_of_string s
-    in
-    let* contact = opt_string_list "contact" json in
-    let* terms_of_service_agreed = opt_bool "termsOfServiceAgreed" json in
-    let* orders =
-      let* o = opt_string_val "orders" json in
-      maybe uri o
-    in
-    let* initial_ip = opt_string_val "initialIp" json in
-    let* created_at =
-      let* ca = opt_string_val "createdAt" json in
-      maybe decode_ptime ca
-    in
-    Ok { account_status ; contact ; terms_of_service_agreed ; orders ;
-         initial_ip ; created_at }
+    match Jsont_bytesrw.decode_string t str with
+    | Ok t -> Ok t
+    | Error _ -> error_msgf "Invalid account object"
 end
 
-type id_type = [ `Dns ]
+let rfc3339 =
+  let dec str = match Ptime.of_rfc3339 str with
+    | Ok (t, _, _) -> t
+    | Error _ -> failwith "Invalid RFC3339 date" in
+  let enc str = Ptime.to_rfc3339 str in
+  Jsont.map ~dec ~enc Jsont.string
 
-let pp_id_type ppf = function `Dns -> Fmt.string ppf "dns"
+let pp_id ppf str = Fmt.pf ppf "DNS - %s" str
 
-let pp_id = Fmt.(pair ~sep:(any " - ") pp_id_type string)
-
-let id_type_of_string = function
-  | "dns" -> Ok `Dns
-  | s -> Error (`Msg (Fmt.str "only DNS typ is supported, got %s" s))
-
-let decode_id json =
-  let* typ =
-    let* t = string_val "type" json in
-    id_type_of_string t
-  in
-  let* id = string_val "value" json in
-  Ok (typ, id)
-
-let decode_ids ids =
-  List.fold_left (fun acc json_id ->
-      let* acc = acc in
-      let* id = decode_id json_id in
-      Ok (id :: acc))
-    (Ok []) ids
+let pp_json =
+  let open Fmt in
+  Dump.iter_bindings S.iter (any "mems") string Jsont.pp_json
 
 module Order = struct
-  type t = {
-    order_status : [ `Pending | `Ready | `Processing | `Valid | `Invalid ];
-    expires : Ptime.t option; (* required if order_status = pending | valid *)
-    identifiers : (id_type * string) list;
-    not_before : Ptime.t option;
-    not_after : Ptime.t option;
-    error : json option; (* "structured as problem document, RFC 7807" *)
-    authorizations : Uri.t list;
-    finalize : Uri.t;
-    certificate : Uri.t option;
-  }
+  type status =
+    | Pending
+    | Ready
+    | Processing
+    | Valid
+    | Invalid
+
+  let status =
+    let pending = "pending", Pending
+    and ready = "ready", Ready
+    and processing = "processing", Processing
+    and valid = "valid", Valid
+    and invalid = "invalid", Invalid in
+    Jsont.enum [ pending; ready; processing; valid; invalid ]
+
+  let identifier =
+    let open Jsont in
+    let t = Object.mem "type" (const string "dns") in
+    let identifier = Object.mem "value" string in
+    Object.map (fun _ identifier -> identifier)
+    |> t |> identifier |> Object.finish
+
+  type t =
+    { status : status
+    ; expires : Ptime.t option
+    ; identifiers : string list
+    ; notBefore : Ptime.t option
+    ; notAfter : Ptime.t option
+    ; error : Jsont.json S.t option
+    ; authorizations : string list
+    ; finalize : string
+    ; certificate : string option }
 
   let pp_status ppf s =
     Fmt.string ppf (match s with
-        | `Pending -> "pending"
-        | `Ready -> "ready"
-        | `Processing -> "processing"
-        | `Valid -> "valid"
-        | `Invalid -> "invalid")
+        | Pending -> "pending"
+        | Ready -> "ready"
+        | Processing -> "processing"
+        | Valid -> "valid"
+        | Invalid -> "invalid")
 
   let pp ppf o =
-    Fmt.pf ppf "status %a@,expires %a@,identifiers %a@,not_before %a@,not_after %a@,error %a@,authorizations %a@,finalize %a@,certificate %a"
-      pp_status o.order_status
+    Fmt.pf ppf "status %a@,expires %a@,identifiers %a@,not_before %a@,not_after %a@,error %a@,authorizations %a@,finalize %s@,certificate %a"
+      pp_status o.status
       Fmt.(option ~none:(any "no") (Ptime.pp_rfc3339 ())) o.expires
       Fmt.(list ~sep:(any ", ") pp_id) o.identifiers
-      Fmt.(option ~none:(any "no") (Ptime.pp_rfc3339 ())) o.not_before
-      Fmt.(option ~none:(any "no") (Ptime.pp_rfc3339 ())) o.not_after
-      Fmt.(option ~none:(any "no error") J.pp) o.error
-      Fmt.(list ~sep:(any ", ") Uri.pp_hum) o.authorizations
-      Uri.pp_hum o.finalize
-      Fmt.(option ~none:(any "no") Uri.pp_hum) o.certificate
+      Fmt.(option ~none:(any "no") (Ptime.pp_rfc3339 ())) o.notBefore
+      Fmt.(option ~none:(any "no") (Ptime.pp_rfc3339 ())) o.notAfter
+      Fmt.(option ~none:(any "no error") pp_json) o.error
+      Fmt.(list ~sep:(any ", ") string) o.authorizations
+      o.finalize
+      Fmt.(option ~none:(any "no") string) o.certificate
 
-  let status_of_string = function
-    | "pending" -> Ok `Pending
-    | "ready" -> Ok `Ready
-    | "processing" -> Ok `Processing
-    | "valid" -> Ok `Valid
-    | "invalid" -> Ok `Invalid
-    | s -> Error (`Msg (Fmt.str "unknown order status %s" s))
+  module Optics = struct
+    let status () =
+      Lun.lense
+        (fun { status; _ } -> status)
+        (fun t status -> { t with status })
+
+    let expires () =
+      Lun.lense
+        (fun { expires; _ } -> expires)
+        (fun t expires -> { t with expires })
+
+    let identifiers () =
+      Lun.lense
+        (fun { identifiers; _ } -> identifiers)
+        (fun t identifiers -> { t with identifiers })
+
+    let notBefore () =
+      Lun.lense
+        (fun { notBefore; _ } -> notBefore)
+        (fun t notBefore -> { t with notBefore })
+
+    let notAfter () =
+      Lun.lense
+        (fun { notAfter; _ } -> notAfter)
+        (fun t notAfter -> { t with notAfter })
+
+    let error () =
+      Lun.lense
+        (fun { error; _ } -> error)
+        (fun t error -> { t with error })
+
+    let authorizations () =
+      Lun.lense
+        (fun { authorizations; _ } -> authorizations)
+        (fun t authorizations -> { t with authorizations })
+
+    let finalize () =
+      Lun.lense
+        (fun { finalize; _ } -> finalize)
+        (fun t finalize -> { t with finalize })
+
+    let certificate () =
+      Lun.lense
+        (fun { certificate; _ } -> certificate)
+        (fun t certificate -> { t with certificate })
+  end
+
+  let t =
+    let open Jsont in
+    let status =
+      let enc = Lun.get Optics.status in
+      Object.mem "status" ~enc status in
+    let expires =
+      let enc = Lun.get Optics.expires in
+      Object.opt_mem "expires" ~enc rfc3339 in
+    let identifiers =
+      let enc = Lun.get Optics.identifiers in
+      Object.mem "identifiers" ~enc (list identifier) in
+    let notBefore =
+      let enc = Lun.get Optics.notBefore in
+      Object.opt_mem "notBefore" ~enc rfc3339 in
+    let notAfter =
+      let enc = Lun.get Optics.notAfter in
+      Object.opt_mem "notAfter" ~enc rfc3339 in
+    let error =
+      let enc = Lun.get Optics.error in
+      Object.opt_mem "error" ~enc (Object.as_string_map json) in
+    let authorizations =
+      let enc = Lun.get Optics.authorizations in
+      Object.mem "authorizations" ~enc (list string) in
+    let finalize =
+      let enc = Lun.get Optics.finalize in
+      Object.mem "finalize" ~enc string in
+    let certificate =
+      let enc = Lun.get Optics.certificate in
+      Object.opt_mem "certificate" ~enc string in
+    let fn status expires identifiers notBefore notAfter error authorizations finalize certificate =
+      { status; expires; identifiers; notBefore; notAfter; error; authorizations; finalize; certificate } in
+    Object.map fn
+    |> status
+    |> expires
+    |> identifiers
+    |> notBefore
+    |> notAfter
+    |> error
+    |> authorizations
+    |> finalize
+    |> certificate
+    |> Object.finish
 
   let decode str =
-    let* json = of_string str in
-    let* order_status =
-      let* s = string_val "status" json in
-      status_of_string s
-    in
-    let* expires =
-      let* e = opt_string_val "expires" json in
-      maybe decode_ptime e
-    in
-    let* identifiers =
-      let* i = list_val "identifiers" json in
-      decode_ids i
-    in
-    let* not_before =
-      let* nb = opt_string_val "notBefore" json in
-      maybe decode_ptime nb
-    in
-    let* not_after =
-      let* na = opt_string_val "notAfter" json in
-      maybe decode_ptime na
-    in
-    let error =
-      match J.Util.member "error" json with `Null -> None | x -> Some x
-    in
-    let* authorizations =
-      let* auths = opt_string_list "authorizations" json in
-      let* auths =
-        Option.to_result
-          ~none:(`Msg "no authorizations found in order")
-          auths
-      in
-      Ok (List.map Uri.of_string auths)
-    in
-    let* finalize =
-      let* f = string_val "finalize" json in
-      uri f
-    in
-    let* certificate =
-      let* c = opt_string_val "certificate" json in
-      maybe uri c
-    in
-    Ok { order_status ; expires ; identifiers ; not_before ; not_after ; error ;
-         authorizations ; finalize ; certificate }
+    match Jsont_bytesrw.decode_string t str with
+    | Ok t -> Ok t
+    | Error _ -> error_msgf "Invalid order object"
 end
 
 module Challenge = struct
-  type typ = [ `Dns | `Http | `Alpn ]
+  type typ = DNS | HTTP | ALPN
 
   let pp_typ ppf t =
-    Fmt.string ppf (match t with `Dns -> "DNS" | `Http -> "HTTP" | `Alpn -> "ALPN")
+    Fmt.string ppf (match t with DNS -> "DNS" | HTTP -> "HTTP" | ALPN -> "ALPN")
 
-  let typ_of_string = function
-    | "tls-alpn-01" -> Ok `Alpn
-    | "http-01" -> Ok `Http
-    | "dns-01" -> Ok `Dns
-    | s -> Error (`Msg (Fmt.str "unknown challenge typ %s" s))
+  let typ =
+    let dns = "dns-01", DNS
+    and http = "http-01", HTTP
+    and alpn = "tls-alpn-01", ALPN in
+    Jsont.enum [ dns; http; alpn ]
 
-  (* turns out, the only interesting ones are dns, http, alpn *)
-  (* all share the same style *)
-  type t = {
-    challenge_typ : typ;
-    url : Uri.t;
-    challenge_status : [ `Pending | `Processing | `Valid | `Invalid ];
-    token : string;
-    validated : Ptime.t option;
-    error : json option;
-  }
+  type status =
+    | Pending
+    | Processing
+    | Valid
+    | Invalid
+
+  let status =
+    let pending = "pending", Pending
+    and processing = "processing", Processing
+    and valid = "valid", Valid
+    and invalid = "invalid", Invalid in
+    Jsont.enum [ pending; processing; valid; invalid ]
+
+  type t =
+    { typ : typ
+    ; url : string
+    ; status : status
+    ; validated : Ptime.t option
+    ; error : Jsont.json S.t option
+    ; token : string }
+  (* NOTE(dinosaure): [token] is common even if we do a DNS or an HTTP challenge. *)
 
   let pp_status ppf s =
     Fmt.string ppf (match s with
-        | `Pending -> "pending"
-        | `Processing -> "processing"
-        | `Valid -> "valid"
-        | `Invalid -> "invalid")
+        | Pending -> "pending"
+        | Processing -> "processing"
+        | Valid -> "valid"
+        | Invalid -> "invalid")
 
   let pp ppf c =
-    Fmt.pf ppf "status %a@,typ %a@,token %s@,url %a@,validated %a@,error %a"
-      pp_status c.challenge_status
-      pp_typ c.challenge_typ
+    Fmt.pf ppf "status %a@,typ %a@,token %s@,url %s@,validated %a@,error %a"
+      pp_status c.status
+      pp_typ c.typ
       c.token
-      Uri.pp_hum c.url
+      c.url
       Fmt.(option ~none:(any "no") (Ptime.pp_rfc3339 ())) c.validated
-      Fmt.(option ~none:(any "no error") J.pp) c.error
+      Fmt.(option ~none:(any "no error") pp_json) c.error
 
-  let status_of_string = function
-    | "pending" -> Ok `Pending
-    | "processing" -> Ok `Processing
-    | "valid" -> Ok `Valid
-    | "invalid" -> Ok `Invalid
-    | s -> Error (`Msg (Fmt.str "unknown order status %s" s))
+  module Optics = struct
+    let typ () =
+      Lun.lense
+        (fun { typ; _ } -> typ)
+        (fun t typ -> { t with typ })
 
-  let decode json =
-    let* challenge_typ =
-      let* t = string_val "type" json in
-      typ_of_string t
-    in
-    let* challenge_status =
-      let* s = string_val "status" json in
-      status_of_string s
-    in
-    let* url =
-      let* u = string_val "url" json in
-      uri u
-    in
-    (* in all three challenges, it's b64 url encoded (but the raw value never used) *)
-    (* they MUST >= 128bit entropy, and not have any trailing = *)
-    let* token = string_val "token" json in
-    let* validated =
-      let* v = opt_string_val "validated" json in
-      maybe decode_ptime v
-    in
+    let url () =
+      Lun.lense
+        (fun { url; _ } -> url)
+        (fun t url -> { t with url })
+
+    let status () =
+      Lun.lense
+        (fun { status; _ } -> status)
+        (fun t status -> { t with status })
+
+    let validated () =
+      Lun.lense
+        (fun { validated; _ } -> validated)
+        (fun t validated -> { t with validated })
+
+    let error () =
+      Lun.lense
+        (fun { error; _ } -> error)
+        (fun t error -> { t with error })
+
+    let token () =
+      Lun.lense
+        (fun { token; _ } -> token)
+        (fun t token -> { t with token })
+  end
+
+  let t =
+    let open Jsont in
+    let typ =
+      let enc = Lun.get Optics.typ in
+      Object.mem "type" ~enc typ in
+    let url =
+      let enc = Lun.get Optics.url in
+      Object.mem "url" ~enc string in
+    let status =
+      let enc = Lun.get Optics.status in
+      Object.mem "status" ~enc status in
+    let validated =
+      let enc = Lun.get Optics.validated in
+      Object.opt_mem "validated" ~enc rfc3339 in
     let error =
-      match J.Util.member "error" json with `Null -> None | x -> Some x
-    in
-    Ok { challenge_typ ; challenge_status ; url ; token ; validated ; error }
+      let enc = Lun.get Optics.error in
+      Object.opt_mem "error" ~enc (Object.as_string_map json) in
+    let token =
+      let enc = Lun.get Optics.token in
+      Object.mem "token" ~enc string in
+    let fn typ url status validated error token =
+      { typ; url; status; validated; error; token } in
+    Object.map fn
+    |> typ
+    |> url
+    |> status
+    |> validated
+    |> error
+    |> token
+    |> Object.finish
+
+  let decode str =
+    match Jsont_bytesrw.decode_string t str with
+    | Ok t -> Ok t
+    | Error _ -> error_msgf "Invalid challenge object"
 end
 
 module Authorization = struct
-  type t = {
-    identifier : id_type * string;
-    authorization_status : [ `Pending | `Valid | `Invalid | `Deactivated | `Expired | `Revoked ];
-    expires : Ptime.t option;
-    challenges : Challenge.t list;
-    wildcard : bool;
-  }
+  type status =
+    | Pending
+    | Valid
+    | Invalid
+    | Deactivated
+    | Expired
+    | Revoked
+
+  let status =
+    let pending = "pending", Pending
+    and valid = "valid", Valid
+    and invalid = "invalid", Invalid
+    and deactivated = "deactivated", Deactivated
+    and expired = "expired", Expired
+    and revoked = "revoked", Revoked in
+    Jsont.enum [ pending; valid; invalid; deactivated; expired; revoked ]
+
+  type t =
+    { identifier : string
+    ; status : status
+    ; expires : Ptime.t option
+    ; challenges : Challenge.t list
+    ; wildcard : bool }
 
   let pp_status ppf s =
     Fmt.string ppf (match s with
-        | `Pending -> "pending"
-        | `Valid -> "valid"
-        | `Invalid -> "invalid"
-        | `Deactivated -> "deactivated"
-        | `Expired -> "expired"
-        | `Revoked -> "revoked")
+        | Pending -> "pending"
+        | Valid -> "valid"
+        | Invalid -> "invalid"
+        | Deactivated -> "deactivated"
+        | Expired -> "expired"
+        | Revoked -> "revoked")
 
   let pp ppf a =
     Fmt.pf ppf "status %a@,identifier %a@,expires %a@,challenges %a@,wildcard %a"
-      pp_status a.authorization_status pp_id a.identifier
+      pp_status a.status pp_id a.identifier
       Fmt.(option ~none:(any "no") (Ptime.pp_rfc3339 ())) a.expires
       Fmt.(list ~sep:(any ",") Challenge.pp) a.challenges
       Fmt.bool a.wildcard
 
-  let status_of_string = function
-    | "pending" -> Ok `Pending
-    | "valid" -> Ok `Valid
-    | "invalid" -> Ok `Invalid
-    | "deactivated" -> Ok `Deactivated
-    | "expired" -> Ok `Expired
-    | "revoked" -> Ok `Revoked
-    | s -> Error (`Msg (Fmt.str "unknown order status %s" s))
+  module Optics = struct
+    let identifier () =
+      Lun.lense
+        (fun { identifier; _ } -> identifier)
+        (fun t identifier -> { t with identifier })
+
+    let status () =
+      Lun.lense
+        (fun { status; _ } -> status)
+        (fun t status -> { t with status })
+
+    let expires () =
+      Lun.lense
+        (fun { expires; _ } -> expires)
+        (fun t expires -> { t with expires })
+
+    let challenges () =
+      Lun.lense
+        (fun { challenges; _ } -> challenges)
+        (fun t challenges -> { t with challenges })
+
+    let wildcard () =
+      Lun.lense
+        (fun { wildcard; _ } -> wildcard)
+        (fun t wildcard -> { t with wildcard })
+  end
+
+  let t =
+    let open Jsont in
+    let identifier =
+      let enc = Lun.get Optics.identifier in
+      Object.mem "identifier" ~enc string in
+    let status =
+      let enc = Lun.get Optics.status in
+      Object.mem "status" ~enc status in
+    let expires =
+      let enc = Lun.get Optics.expires in
+      Object.opt_mem "expires" ~enc rfc3339 in
+    let challenges =
+      let enc = Lun.get Optics.challenges in
+      Object.mem "challenges" ~enc (list Challenge.t) in
+    let wildcard =
+      let enc = Lun.get Optics.wildcard in
+      let dec_absent = false in
+      let enc_omit = Fun.negate Fun.id in
+      Object.mem "wildcard" ~enc ~dec_absent ~enc_omit bool in
+    let fn identifier status expires challenges wildcard =
+      { identifier; status; expires; challenges; wildcard } in
+    Object.map fn
+    |> identifier
+    |> status
+    |> expires
+    |> challenges
+    |> wildcard
+    |> Object.finish
 
   let decode str =
-    let* json = of_string str in
-    let* identifier =
-      let* i = assoc_val "identifier" json in
-      decode_id i
-    in
-    let* authorization_status =
-      let* s = string_val "status" json in
-      status_of_string s
-    in
-    let* expires =
-      let* e = opt_string_val "expires" json in
-      maybe decode_ptime e
-    in
-    let* challenges = list_val "challenges" json in
-    let challenges =
-      (* be modest in what you receive - there may be other challenges in the future *)
-      List.fold_left (fun acc json ->
-          match Challenge.decode json with
-          | Error `Msg err ->
-            Logs.warn (fun m -> m "ignoring challenge %a: parse error %s" J.pp json err);
-            acc
-          | Ok c -> c :: acc) [] challenges
-    in
-    (* TODO "MUST be present and true for orders containing a DNS identifier with wildcard. for others, it MUST be absent" *)
-    let* wildcard =
-      Result.map
-        (Option.value ~default:false)
-        (opt_bool "wildcard" json)
-    in
-    Ok { identifier ; authorization_status ; expires ; challenges ; wildcard }
+    match Jsont_bytesrw.decode_string t str with
+    | Ok t -> Ok t
+    | Error _ -> error_msgf "Invalid authorization object"
 end
 
 module Error = struct
-  (* from http://www.iana.org/assignments/acme urn registry *)
-  type t = {
-    err_typ : [
-      | `Account_does_not_exist | `Already_revoked | `Bad_csr | `Bad_nonce
-      | `Bad_public_key | `Bad_revocation_reason | `Bad_signature_algorithm
-      | `CAA | `Connection | `DNS | `External_account_required
-      | `Incorrect_response | `Invalid_contact | `Malformed | `Order_not_ready
-      | `Rate_limited | `Rejected_identifier | `Server_internal | `TLS
-      | `Unauthorized | `Unsupported_contact | `Unsupported_identifier
-      | `User_action_required
-    ];
-    detail : string
-  }
+  type error =
+    [ `Account_does_not_exist
+    | `Already_revoked
+    | `Bad_csr
+    | `Bad_nonce
+    | `Bad_public_key
+    | `Bad_revocation_reason
+    | `Bad_signature_algorithm
+    | `CAA
+    | `Connection
+    | `DNS
+    | `External_account_required
+    | `Incorrect_response
+    | `Invalid_contact
+    | `Malformed
+    | `Order_not_ready
+    | `Rate_limited
+    | `Rejected_identifier
+    | `Server_internal
+    | `TLS
+    | `Unauthorized
+    | `Unsupported_contact
+    | `Unsupported_identifier
+    | `User_action_required ]
+
+  let error =
+    [ "accountDoesNotExist", `Account_does_not_exist
+    ; "alreadyRevoked", `Already_revoked
+    ; "badCSR", `Bad_csr
+    ; "badNonce", `Bad_nonce
+    ; "badPublicKey", `Bad_public_key
+    ; "badRevocationReason", `Bad_revocation_reason
+    ; "badSignatureAlgorithm", `Bad_signature_algorithm
+    ; "caa", `CAA
+    ; "connection", `Connection
+    ; "dns", `DNS
+    ; "externalAccountRequired", `External_account_required
+    ; "incorrectResponse", `Incorrect_response
+    ; "invalidContact", `Invalid_contact
+    ; "malformed", `Malformed
+    ; "orderNotReady", `Order_not_ready
+    ; "rateLimited", `Rate_limited
+    ; "rejectedIdentifier", `Rejected_identifier
+    ; "serverInternal", `Server_internal
+    ; "tls", `TLS
+    ; "unauthorized", `Unauthorized
+    ; "unsupportedContact", `Unsupported_contact
+    ; "unsupportedIdentifier", `Unsupported_identifier
+    ; "userActionRequired", `User_action_required ]
+    |> List.map (fun (str, value) -> "urn:ietf:params:acme:error:" ^ str, value)
+    |> Jsont.enum
+
+  type t =
+    { error : error
+    ; detail : string }
 
   let err_typ_to_string = function
     | `Account_does_not_exist -> "The request specified an account that does not exist"
@@ -533,55 +733,33 @@ module Error = struct
     | `User_action_required -> "Visit the 'instance' URL and take actions specified there"
 
   let pp ppf e =
-    Fmt.pf ppf "%s, detail: %s" (err_typ_to_string e.err_typ) e.detail
+    Fmt.pf ppf "%s, detail: %s" (err_typ_to_string e.error) e.detail
+  
+  module Optics = struct
+    let error () =
+      Lun.lense
+        (fun { error; _ } -> error)
+        (fun t error -> { t with error })
 
-  let err_typ_of_string str =
-    let prefix = "urn:ietf:params:acme:error:" in
-    let plen = String.length prefix in
-    let err =
-      if String.length str > plen && String.(equal prefix (sub str 0 plen)) then
-        Some (String.sub str plen (String.length str - plen))
-      else
-        None
-    in
-    match err with
-    | Some err ->
-      (* from https://www.iana.org/assignments/acme/acme.xhtml (20200209) *)
-      begin match err with
-        | "accountDoesNotExist" -> Ok `Account_does_not_exist
-        | "alreadyRevoked" -> Ok `Already_revoked
-        | "badCSR" -> Ok `Bad_csr
-        | "badNonce" -> Ok `Bad_nonce
-        | "badPublicKey" -> Ok `Bad_public_key
-        | "badRevocationReason" -> Ok `Bad_revocation_reason
-        | "badSignatureAlgorithm" -> Ok `Bad_signature_algorithm
-        | "caa" -> Ok `CAA
-        (* | "compound" -> Ok `Compound see 'subproblems' array *)
-        | "connection" -> Ok `Connection
-        | "dns" -> Ok `DNS
-        | "externalAccountRequired" -> Ok `External_account_required
-        | "incorrectResponse" -> Ok `Incorrect_response
-        | "invalidContact" -> Ok `Invalid_contact
-        | "malformed" -> Ok `Malformed
-        | "orderNotReady" -> Ok `Order_not_ready
-        | "rateLimited" -> Ok `Rate_limited
-        | "rejectedIdentifier" -> Ok `Rejected_identifier
-        | "serverInternal" -> Ok `Server_internal
-        | "tls" -> Ok `TLS
-        | "unauthorized" -> Ok `Unauthorized
-        | "unsupportedContact" -> Ok `Unsupported_contact
-        | "unsupportedIdentifier" -> Ok `Unsupported_identifier
-        | "userActionRequired" -> Ok `User_action_required
-        | s -> Error (`Msg (Fmt.str "unknown acme error typ %s" s))
-      end
-    | None -> Error (`Msg (Fmt.str "unknown error type %s" str))
+    let detail () =
+      Lun.lense
+        (fun { detail; _ } -> detail)
+        (fun t detail -> { t with detail })
+  end
+
+  let t =
+    let open Jsont in
+    let error =
+      let enc = Lun.get Optics.error in
+      Object.mem "type" ~enc error in
+    let detail =
+      let enc = Lun.get Optics.detail in
+      Object.mem "detail" ~enc string in
+    Object.map (fun error detail -> { error; detail })
+    |> error |> detail |> Object.finish
 
   let decode str =
-    let* json = of_string str in
-    let* err_typ =
-      let* t = string_val "type" json in
-      err_typ_of_string t
-    in
-    let* detail = string_val "detail" json in
-    Ok { err_typ ; detail }
+    match Jsont_bytesrw.decode_string t str with
+    | Ok t -> Ok t
+    | Error _ -> error_msgf "Invalid error object"
 end

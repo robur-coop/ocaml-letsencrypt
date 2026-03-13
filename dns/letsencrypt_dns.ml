@@ -9,7 +9,7 @@ let dns_solver writef =
     let domain_name = Domain_name.prepend_label_exn domain "_acme-challenge" in
     writef domain_name solution
   in
-  { Letsencrypt.Client.typ = `Dns ; solve_challenge }
+  { Letsencrypt.Client.typ = Letsencrypt.Client.DNS ; solve_challenge }
 
 let print_dns =
   let solve domain solution =
