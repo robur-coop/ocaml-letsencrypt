@@ -12,7 +12,7 @@ module Make (Stack : Tcpip.Stack.V4V6): sig
     production:bool ->
     LE.configuration ->
     Http_mirage_client.t ->
-    (Tls.Config.own_cert, [> `Msg of string ]) result Lwt.t
+    (Tls.Config.own_cert, [> `Msg of string | `HTTP of LE.C.error ]) result Lwt.t
   (** [get_certificates ~yes_my_port_80_is_reachable_and_unused ~production cfg client]
       tries to resolve the Let's encrypt challenge by initiating an HTTP server
       on port 80 and handling requests from it with [ocaml-letsencrypt].
@@ -34,7 +34,7 @@ module Make (Stack : Tcpip.Stack.V4V6): sig
     LE.configuration ->
     Http_mirage_client.t ->
     (Paf.TLS.flow, Ipaddr.t * int) Alpn.server_handler ->
-    (unit, [> `Msg of string ]) result Lwt.t
+    (unit, [> `Msg of string | `HTTP of LE.C.error ]) result Lwt.t
   (** [with_lets_encrypt_certificates ?port ?alpn_protocols stackv4v6 ~production cfg client handler]
       launches 2 servers:
       - An HTTP/1.1 server which handles let's encrypt challenges and

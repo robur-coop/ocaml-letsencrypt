@@ -12,7 +12,7 @@
     client with an ability to stop the server when the client finish the job:
 
     {[
-      module LE = LE.Make (Time) (Stack)
+      module LE = LE.Make (Stack)
 
       let provision ctx =
         Paf.init ~port:80 (Stack.tcp stackv4v6) >>= fun t ->
@@ -49,6 +49,10 @@ type configuration = {
   account_key_bits : int option;
 }
 
+module C : Letsencrypt.Client.C
+  with type 'a t = 'a Lwt.t
+   and type ctx = Http_mirage_client.t
+
 module Make (Stack : Tcpip.Stack.V4V6) : sig
   type nonrec configuration = configuration = {
     email : Emile.mailbox option;
@@ -61,6 +65,8 @@ module Make (Stack : Tcpip.Stack.V4V6) : sig
     account_key_bits : int option;
   }
 
+  module Acme : module type of Letsencrypt.Client.Make (Lwt) (C)
+
   val request_handler :
     Ipaddr.t * int -> H1.Server_connection.request_handler
 
@@ -69,14 +75,14 @@ module Make (Stack : Tcpip.Stack.V4V6) : sig
     ?production:bool ->
     configuration ->
     Http_mirage_client.t ->
-    (Tls.Config.own_cert, [> `Msg of string ]) result Lwt.t
+    (Tls.Config.own_cert, [> `Msg of string | `HTTP of C.error ]) result Lwt.t
 
   val initialise :
     ctx:Http_mirage_client.t ->
     endpoint:Uri.t ->
     ?email:string ->
     X509.Private_key.t ->
-    (Letsencrypt.Client.t, [> `Msg of string ]) result Lwt.t
+    (Letsencrypt.Client.t, [> `Msg of string | `HTTP of C.error ]) result Lwt.t
   (** [initialise ~ctx ~endpoint ~email priv] constructs a
       {!type:Letsencrypt.Client.t} by looking up the directory and account of
       [priv] at [endpoint]. If no account is registered yet, a new account is
@@ -85,11 +91,11 @@ module Make (Stack : Tcpip.Stack.V4V6) : sig
 
   val sign_certificate :
     ctx:Http_mirage_client.t ->
-    Letsencrypt.Client.solver ->
+    Acme.solver ->
     Letsencrypt.Client.t ->
     (int -> unit Lwt.t) ->
     X509.Signing_request.t ->
-    (X509.Certificate.t list, [> `Msg of string ]) result Lwt.t
+    (X509.Certificate.t list, [> `Msg of string | `HTTP of C.error ]) result Lwt.t
   (** [sign_certificate ~ctx solver t sleep csr] orders a certificate for the
       names in the signing request [csr], and solves the requested challenges. *)
 end
