@@ -1,14 +1,17 @@
+module Make (S : Letsencrypt.Client.S) : sig
+include module type of Letsencrypt.Client.Solver (S)
+
 (** [dns_solver (fun domain content)] is a solver for dns-01 challenges.
     The provided function should return [Ok ()] once the authoritative
     name servers serve a TXT record at [domain] with the content. The
     [domain] already has the [_acme-challenge.] prepended. *)
 val dns_solver :
   ([`raw] Domain_name.t -> string ->
-   (unit, [ `Msg of string ]) result Lwt.t) -> Letsencrypt.Client.solver
+   (unit, [ `Msg of string ]) result S.t) -> solver
 
 (** [print_dns] outputs the DNS challenge solution, and waits for user input
     before continuing with ACME. *)
-val print_dns : Letsencrypt.Client.solver
+val print_dns : solver
 
 (** [nsupdate ~proto id now send ~recv ~keyname key ~zone]
     constructs a dns solver that sends a DNS update packet (using [send])
@@ -19,7 +22,8 @@ val print_dns : Letsencrypt.Client.solver
     query section of the update packet. If signing, sending, or receiving
     fails, the error is reported. *)
 val nsupdate : ?proto:Dns.proto -> int -> (unit -> Ptime.t) ->
-  (string -> (unit, [ `Msg of string ]) result Lwt.t) ->
-  ?recv:(unit -> (string, [ `Msg of string ]) result Lwt.t) ->
+  (string -> (unit, [ `Msg of string ]) result S.t) ->
+  ?recv:(unit -> (string, [ `Msg of string ]) result S.t) ->
   zone:[ `host ] Domain_name.t ->
-  keyname:'a Domain_name.t -> Dns.Dnskey.t -> Letsencrypt.Client.solver
+  keyname:'a Domain_name.t -> Dns.Dnskey.t -> solver
+end
