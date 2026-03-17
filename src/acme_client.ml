@@ -1,5 +1,3 @@
-open Lwt.Infix
-
 open Acme_common
 
 let src = Logs.Src.create "letsencrypt" ~doc:"let's encrypt library"
@@ -7,47 +5,62 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 let ( let* ) = Result.bind
 
-let guard p err = if p then Ok () else Error err
+let msgf fmt = Fmt.kstr (fun msg -> `Msg msg) fmt
 
 let key_authorization key token =
   let pk = X509.Private_key.public key in
   let pk = Jws.Jwk.of_public_key_exn pk in
-  let thumbprint = Jws.Jwk.signature pk in
-  Printf.sprintf "%s.%s" token thumbprint
+  Fmt.str "%s.%s" token (Jws.Jwk.signature pk)
 
 type t = {
   account_key : X509.Private_key.t;
   mutable next_nonce : string;
   d : Directory.t;
-  account_url : Uri.t;
+  account_url : string;
 }
 
 type challenge = Challenge.typ = DNS | HTTP | ALPN
 
-type solver = {
-  typ : challenge;
-  solve_challenge : token:string -> key_authorization:string ->
-    [`host] Domain_name.t -> (unit, [ `Msg of string]) result Lwt.t;
-}
+module type S = sig
+  type 'a t
 
-let error_in endpoint status body =
-  Error (`Msg (Fmt.str
-                 "Error at %s: status %3d - body: %S"
-                 endpoint status body))
+  val bind : 'a t -> ('a -> 'b t) -> 'b t
+  val return : 'a -> 'a t
+end
+
+module type C = sig
+  type 'a t
+  type ctx
+  type error
+  type meth = [ `HEAD | `GET | `POST ]
+
+  type response =
+    { headers : (string * string) list
+    ; status : int }
+
+  val request : ?ctx:ctx -> ?meth:meth -> ?headers:(string * string) list -> ?body:string -> string -> (response * string, error) result t
+end
+
+module Solver (S : S) = struct
+type solver = {
+  challenge : challenge;
+  solve_challenge : token:string -> key_authorization:string ->
+    [`host] Domain_name.t -> (unit, [ `Msg of string]) result S.t;
+}
 
 let http_solver writef =
   let solve_challenge ~token ~key_authorization domain =
     let prefix = ".well-known/acme-challenge" in
     writef domain ~prefix ~token ~content:key_authorization
   in
-  { typ = HTTP; solve_challenge }
+  { challenge = HTTP; solve_challenge }
 
 let print_http =
   let solve domain ~prefix ~token ~content =
     Log.warn (fun f -> f "Setup http://%a/%s/%s to serve %s and press enter to continue"
                  Domain_name.pp domain prefix token content);
     ignore (read_line ());
-    Lwt.return_ok ()
+    S.return (Ok ())
   in
   http_solver solve
 
@@ -83,9 +96,9 @@ let alpn_solver ?(key_type = `RSA) ?(bits = 2048) writef =
         (Signing_request.sign csr ~valid_from ~valid_until ~extensions priv dn)
     with
     | Ok cert -> writef domain ~alpn priv cert
-    | Error _ as e -> Lwt.return e
+    | Error _ as e -> S.return e
   in
-  { typ = ALPN; solve_challenge }
+  { challenge = ALPN; solve_challenge }
 
 let print_alpn =
   let solve domain ~alpn priv cert =
@@ -94,96 +107,90 @@ let print_alpn =
                  (X509.Private_key.encode_pem priv)
                  (X509.Certificate.encode_pem cert));
     ignore (read_line ());
-    Lwt.return_ok ()
+    S.return (Ok ())
   in
   alpn_solver solve
+end
 
-module Make (Http : HTTP_client.S) = struct
+module Make (S : S) (C : C with type 'a t = 'a S.t) = struct
+include Solver (S)
 
-let location headers =
-  match Http.Headers.get_location headers with
-  | Some url -> Ok url
-  | None -> Error (`Msg "expected a location header, but couldn't find it")
+let ( let* ) x fn =
+  S.bind x @@ function
+  | Error _ as err -> S.return err
+  | Ok v -> fn v
 
-let extract_nonce headers =
-  match Http.Headers.get headers "Replay-Nonce" with
-  | Some nonce -> Ok nonce
-  | None -> Error (`Msg "Error: I could not fetch a new nonce.")
+let ( >>= ) = S.bind
 
-let headers =
-  Http.Headers.init_with "user-agent" ("ocaml-letsencrypt/" ^ Version.t)
+let error_msgf fmt = Fmt.kstr (fun msg -> S.return (Error (`Msg msg))) fmt
+let ok v = S.return (Ok v)
+let guard ~err fn = if fn () then ok () else S.return (Error err)
 
-let http_get ?ctx url =
-  Http.get ?ctx ~headers url >>= fun (resp, body) ->
-  let status = Http.Response.status resp in
-  let headers = Http.Response.headers resp in
-  body |> Http.Body.to_string >>= fun body ->
-  Log.debug (fun m -> m "HTTP get: %a" Uri.pp_hum url);
-  Log.debug (fun m -> m "Got status: %3d" status);
-  Log.debug (fun m -> m "headers %S" (Http.Headers.to_string headers));
-  Log.debug (fun m -> m "body %S" body);
-  Lwt.return (status, headers, body)
+let location r =
+  let fn (k, v) = String.lowercase_ascii k, v in
+  let hdrs = List.map fn r.C.headers in
+  match List.assoc_opt "location" hdrs with
+  | Some url -> ok url
+  | None -> error_msgf "Expected a location header, but couldn't find it"
 
-let http_head ?ctx url =
-  Http.head ?ctx ~headers url >>= fun resp ->
-  let status = Http.Response.status resp in
-  let headers = Http.Response.headers resp in
-  Log.debug (fun m -> m "HTTP HEAD: %a" Uri.pp_hum url);
-  Log.debug (fun m -> m "Got status: %3d" status);
-  Log.debug (fun m -> m "headers %S" (Http.Headers.to_string headers));
-  Lwt.return (status, headers)
+let request ?ctx ?meth ?headers ?body url =
+  C.request ?ctx ?meth ?headers ?body url >>= function
+  | Ok value -> ok value
+  | Error err -> S.return (Error (`HTTP err))
+
+let extract_nonce r =
+  let hdrs = List.map (fun (k, v) -> String.lowercase_ascii k, v) r.C.headers in
+  match List.assoc_opt "replay-nonce" hdrs with
+  | Some nonce -> ok nonce
+  | None -> error_msgf "Nonce not found"
 
 let discover ?ctx directory =
-  http_get ?ctx directory >|= function
-  | (200, _headers, body) -> Directory.decode body
-  | (status, _, body) -> error_in "discover" status body
+  let* resp, body = request ?ctx ~meth:`GET directory in
+  match resp.C.status with
+  | 200 -> S.return (Directory.decode body)
+  | _ -> error_msgf "Impossible to discover your ACME service"
 
 let get_nonce ?ctx url =
-  http_head ?ctx url >|= function
-  | 200, headers -> extract_nonce headers
-  | s, _ -> error_in "get_nonce" s ""
+  let* r, _ = request ?ctx ~meth:`HEAD url in
+  match r.C.status with
+  | 200 -> extract_nonce r
+  | _ -> error_msgf "Invalid response from HEAD request to %s" url
 
-let rec http_post_jws ?ctx ?(no_key_url = false) cli data url =
-  let prepare_post key nonce =
-    let kid = if no_key_url then None else Some (Uri.to_string cli.account_url) in
+let rec post ?ctx ?(with_kid = false) cli data url =
+  let prepare key nonce =
+    let kid = if with_kid then None else Some cli.account_url in
     let extra = Jws.S.singleton "url" (Jsont.Json.string url) in
     let key = Jws.Pk.of_private_key_exn key in
-    let body =
-      let data = Jsont_bytesrw.encode_string Jsont.json data in
-      let data = Result.get_ok data in
-      Jws.encode ?kid ~extra ~nonce key data in
-    let body_len = string_of_int (String.length body) in
-    let headers = Http.Headers.add headers  "Content-Length" body_len in
-    let headers = Http.Headers.add headers "Content-Type" "application/jose+json" in
+    let data = Jsont_bytesrw.encode_string Jsont.json data |> Result.get_ok in
+    let body = Jws.encode ?kid ~extra ~nonce key data in
+    let headers =
+      [ "Content-Type", "application/jose+json"
+      ; "Content-Length", string_of_int (String.length body) ] in
     (headers, body)
   in
-  let headers, body = prepare_post cli.account_key cli.next_nonce in
+  let headers, body = prepare cli.account_key cli.next_nonce in
   Log.debug (fun m -> m "HTTP post %s (data %a body %S)"
                 url Jsont.Json.pp data body);
-  let body = Http.Body.of_string body in
-  Http.post ?ctx ~body ~headers (Uri.of_string url) >>= fun (resp, body) ->
-  let status = Http.Response.status resp in
-  let headers = Http.Response.headers resp in
-  Http.Body.to_string body >>= fun body ->
-  Log.debug (fun m -> m "Got code: %3d" status);
-  Log.debug (fun m -> m "headers %S" (Http.Headers.to_string headers));
+  let* resp, body = request ?ctx ~meth:`POST ~body ~headers url in
+  Log.debug (fun m -> m "Got code: %3d" resp.C.status);
+  Log.debug (fun m -> m "headers %a" Fmt.(Dump.list (pair string string)) resp.C.headers);
   Log.debug (fun m -> m "body %S" body);
-  (match extract_nonce headers with
-   | Error `Msg e -> Log.err (fun m -> m "couldn't extract nonce: %s" e)
-   | Ok next_nonce -> cli.next_nonce <- next_nonce);
-  if status = 400 then begin
-    let open Lwt_result.Infix in
-    Lwt_result.lift (Error.decode body) >>= fun err ->
-    if err.error = `Bad_nonce then begin
-      Log.warn (fun m -> m "received bad nonce %s from server, retrying same request"
-                   err.detail);
-      http_post_jws ?ctx cli data url
-    end else begin
-      Log.warn (fun m -> m "error %a in response" Error.pp err);
-      Lwt.return_ok (status, headers, body)
-    end
-  end else
-    Lwt.return_ok (status, headers, body)
+  let* () =
+    extract_nonce resp >>= function
+    | Ok nonce -> cli.next_nonce <- nonce; ok ()
+    | Error (`Msg msg) ->
+        Log.err (fun m -> m "Couldn't extract nonce: %s" msg);
+        ok () in
+  match resp.C.status with
+  | 400 ->
+      let* err = S.return (Error.decode body) in
+      begin match err.Error.error with
+      | `Bad_nonce ->
+          Log.warn (fun m -> m "received bad nonce %s from server, retrying same request"
+                       err.detail);
+          post ?ctx cli data url
+      | _ -> ok (resp, body) end
+  | _ -> ok (resp, body)
 
 let create_account ?ctx ?email cli =
   let url = cli.d.newAccount in
@@ -196,84 +203,74 @@ let create_account ?ctx ?email cli =
   let body =
     let open Jsont.Json in
     object' (mem (name "termsOfServiceAgreed") (bool true) :: contact) in
-  http_post_jws ?ctx ~no_key_url:true cli body url >|= function
-  | Error e -> Error e
-  | Ok (201, headers, body) ->
-    let* account = Account.decode body in
+  let* resp, body = post ?ctx ~with_kid:true cli body url in
+  match resp.C.status with
+  | 201 ->
+    let* account = Account.decode body |> S.return in
     let* () =
-      guard (account.status = Valid)
-        (`Msg (Fmt.str "account %a does not have status valid"
-                 Account.pp account))
+      let err = msgf "Account %a does not have status valid" Account.pp account in
+      guard ~err @@ fun () -> (account.Account.status = Account.Valid)
     in
-    let* account_url = location headers in
-    Ok { cli with account_url }
-  | Ok (status, _headers, body) -> error_in "newAccount" status body
+    let* account_url = location resp in
+    ok { cli with account_url }
+  | _ -> error_msgf "newAccount"
 
 let get_account ?ctx cli url =
-  let body = Jsont.Json.null () in
-  http_post_jws ?ctx cli body url >|= function
-  | Error e -> Error e
-  | Ok (200, _headers, body) ->
+  let* resp, body = post ?ctx cli Jsont.Json.(null ()) url in
+  match resp.C.status with
+  | 200 ->
     (* at least staging doesn't include orders *)
-    let* acc = Account.decode body in
+    let* acc = S.return (Account.decode body) in
     (* well, here we may encounter some orders which should be processed
        (or cancelled, considering the lack of a csr)! *)
     Log.info (fun m -> m "account %a" Account.pp acc);
-    Ok ()
-  | Ok (status, _headers, body) -> error_in "get account" status body
+    ok ()
+  | _ -> error_msgf "get_account"
 
 let find_account_url ?ctx ?email ~nonce key directory =
   let url = directory.Directory.newAccount in
   let body =
     let open Jsont.Json in
     object' [ mem (name "onlyReturnExisting") (bool true) ] in
-  let cli = {
-    next_nonce = nonce ;
-    account_key = key ;
-    d = directory ;
-    account_url = Uri.empty ;
-  } in
-  http_post_jws ?ctx ~no_key_url:true cli body url >>= function
-  | Error e -> Lwt.return (Error e)
-  | Ok (200, headers, body) ->
-    Lwt.return begin
-      (* unclear why this is not an account object, as required in 7.3.0/7.3.1 *)
-      let* account = Account.decode body in
-      let* () =
-        guard (account.status = Valid)
-          (`Msg (Fmt.str "account %a does not have status valid"
-                   Account.pp account))
-      in
-      let* account_url = location headers in
-      Ok { cli with account_url }
-    end
-  | Ok (400, _headers, body) ->
-    let open Lwt_result.Infix in
-    Lwt_result.lift (Error.decode body) >>= fun err ->
-    if err.error = `Account_does_not_exist then begin
+  let cli =
+    { next_nonce = nonce
+    ; account_key = key
+    ; d= directory
+    ; account_url = String.empty } in
+  let* resp, body = post ?ctx ~with_kid:false cli body url in
+  match resp.C.status with
+  | 200 ->
+    (* unclear why this is not an account object, as required in 7.3.0/7.3.1 *)
+    let* account = S.return (Account.decode body) in
+    let* () =
+      let err = msgf "Account %a does not have status valid" Account.pp account in
+      guard ~err @@ fun () -> account.Account.status = Account.Valid in
+    let* account_url = location resp in
+    ok { cli with account_url }
+  | 400 ->
+    let* err = S.return (Error.decode body) in
+    if err.Error.error = `Account_does_not_exist then begin
       Log.info (fun m -> m "account does not exist, creating an account");
       create_account ?ctx ?email cli
     end else begin
       Log.err (fun m -> m "error %a in find account url" Error.pp err);
-      Lwt.return (error_in "newAccount" 400 body)
+      error_msgf "newAccount: %s" err.Error.detail
     end
   (* according to RFC 8555 7.3.3 there can be a forbidden if ToS were updated,
      and the client should re-approve them *)
-  | Ok (status, _headers, body) ->
-    Lwt.return (error_in "newAccount" status body)
+  | status -> error_msgf "find_account_url: unexpected status %d" status
 
 let challenge_solved ?ctx cli url =
-  let body = Jsont.Json.object' [] in (* not entirely clear why this now is {} and not "" *)
-  http_post_jws ?ctx cli body url >|= function
-  | Error e -> Error e
-  | Ok (200, _headers, body) ->
+  let body = Jsont.Json.(object' []) in (* not entirely clear why this now is {} and not "" *)
+  let* resp, body = post ?ctx cli body url in
+  match resp.C.status with
+  | 200 ->
     Log.info (fun m -> m "challenge solved POSTed (OK), body %s" body);
-    Ok ()
-  | Ok (201, _headers, body) ->
+    ok ()
+  | 201 ->
     Log.info (fun m -> m "challenge solved POSTed (CREATE), body %s" body);
-    Ok ()
-  | Ok (status, _headers, body) ->
-    error_in "challenge solved" status body
+    ok ()
+  | status -> error_msgf "challenge solved: status %d - body: %S" status body
 
 let process_challenge ?ctx solver cli sleep host challenge =
   (* overall plan:
@@ -284,11 +281,12 @@ let process_challenge ?ctx solver cli sleep host challenge =
   match challenge.Challenge.status with
   | Pending ->
     (* do some work :) solve it! *)
-    let open_err f = f >|= function Ok _ as r -> r | Error (`Msg _) as r -> r in
-    let open Lwt_result.Infix in
     let token = challenge.token in
     let key_authorization = key_authorization cli.account_key token in
-    open_err (solver.solve_challenge ~token ~key_authorization host) >>= fun () ->
+    let* () =
+      S.bind (solver.solve_challenge ~token ~key_authorization host) @@ function
+      | (Ok _) as r -> S.return r
+      | Error (`Msg _) as r -> S.return r in
     challenge_solved ?ctx cli challenge.url
   | Processing -> (* ehm - relax and wait till the server figured something out? *)
     (* but there's as well the notion of "Likewise, client requests for retries do not cause a state change." *)
@@ -318,30 +316,28 @@ let process_challenge ?ctx solver cli sleep host challenge =
     *)
     (* so what shall we do? wait? *)
     Log.info (fun m -> m "challenge is processing, let's wait a second");
-    sleep 1 >>= fun () ->
-    Lwt.return_ok ()
+    sleep 1 >>= fun () -> ok ()
   | Valid -> (* nothing to do from our side *)
-    Lwt.return_ok ()
+    ok ()
   | Invalid -> (* we lost *)
-    Lwt.return_error (`Msg "challenge invalid")
+    S.return (Error (`Msg "challenge invalid"))
 
 (* yeah, we could parallelize them... but first not do it. *)
+
 let process_authorization ?ctx solver cli sleep url =
-  let body = Jsont.Json.null () in
-  http_post_jws ?ctx cli body url >>= function
-  | Error e -> Lwt.return (Error e)
-  | Ok (200, _headers, body) ->
-    begin
-      let open Lwt_result.Infix in
-      Lwt_result.lift (Authorization.decode body) >>= fun auth ->
+  let body = Jsont.Json.(null ()) in
+  let* resp, body = post ?ctx cli body url in
+  match resp.C.status with
+  | 200 ->
+      let* auth = S.return (Authorization.decode body) in
       Log.info (fun m -> m "authorization %a" Authorization.pp auth);
-      match auth.status with
+      begin match auth.Authorization.status with
       | Pending -> (* we need to work on some challenge here! *)
         let host = Domain_name.(host_exn @@ of_string_exn @@ auth.identifier) in
-        begin match List.filter (fun c -> c.Challenge.typ = solver.typ) auth.challenges with
+        begin match List.filter (fun c -> c.Challenge.typ = solver.challenge) auth.challenges with
           | [] ->
             Log.err (fun m -> m "no challenge found for solver");
-            Lwt.return (Error (`Msg "couldn't find a challenge that matches the provided solver"))
+            S.return (Error (`Msg "couldn't find a challenge that matches the provided solver"))
           | c::cs ->
             if not (cs = []) then
               Log.err (fun m -> m "multiple (%d) challenges found for solver, taking head"
@@ -350,66 +346,63 @@ let process_authorization ?ctx solver cli sleep url =
         end
       | Valid -> (* we can ignore it - some challenge made it *)
         Log.info (fun m -> m "authorization is valid");
-        Lwt.return_ok ()
+        ok ()
       | Invalid -> (* no chance this will ever be good again, or is there? *)
         Log.err (fun m -> m "authorization is invalid");
-        Lwt.return_error (`Msg "invalid")
+        S.return (Error (`Msg "invalid"))
       | Deactivated -> (* client-side deactivated / retracted *)
         Log.err (fun m -> m "authorization is deactivated");
-        Lwt.return_error (`Msg "deactivated")
+        S.return (Error (`Msg "deactivated"))
       | Expired -> (* timeout *)
         Log.err (fun m -> m "authorization is expired");
-        Lwt.return_error (`Msg "expired")
+        S.return (Error (`Msg "expired"))
       | Revoked -> (* server-side deactivated *)
         Log.err (fun m -> m "authorization is revoked");
-        Lwt.return_error (`Msg "revoked")
-    end
-  | Ok (status, _, body) -> Lwt.return (error_in "authorization" status body)
+        S.return (Error (`Msg "revoked"))
+      end
+  | status -> error_msgf "authorization: status %d - body: %S" status body
 
 let finalize ?ctx cli csr url =
   let body =
     let csr_as_b64 =
-      X509.Signing_request.encode_der csr |> Jws.Base64u.encode
-    in
+      X509.Signing_request.encode_der csr |> Jws.Base64u.encode in
     let open Jsont.Json in
-    object' [ mem (name "csr") (string csr_as_b64) ]
-  in
-  http_post_jws ?ctx cli body url >|= function
-  | Error e -> Error e
-  | Ok (200, headers, body) ->
-    let* order = Order.decode body in
-    Ok (headers, order)
-  | Ok (status, _, body) -> error_in "finalize" status body
+    object' [ mem (name "csr") (string csr_as_b64) ] in
+  let* resp, body = post ?ctx cli body url in
+  match resp.C.status with
+  | 200 ->
+    let* order = S.return (Order.decode body) in
+    ok (resp.C.headers, order)
+  | status -> error_msgf "finalize: status %d - body: %S" status body
 
 let dl_certificate ?ctx cli url =
-  let body = Jsont.Json.null () in
-  http_post_jws ?ctx cli body url >|= function
-  | Error e -> Error e
-  | Ok (200, _headers, body) ->
+  let body = Jsont.Json.(null ()) in
+  let* resp, body = post ?ctx cli body url in
+  match resp.C.status with
+  | 200 ->
     (* body is a certificate chain (no comments), with end-entity certificate being the first *)
     (* TODO: check order? figure out chain? *)
-    X509.Certificate.decode_pem_multiple body
-  | Ok (status, _header, body) -> error_in "certificate" status body
+    S.return (X509.Certificate.decode_pem_multiple body)
+  | status -> error_msgf "certificate: status %d - body: %S" status body
 
 let get_order ?ctx cli url =
-  let body = Jsont.Json.null () in
-  http_post_jws ?ctx cli body url >|= function
-  | Error e -> Error e
-  | Ok (200, headers, body) ->
-    let* order = Order.decode body in
-    Ok (headers, order)
-  | Ok (status, _header, body) ->
-    error_in "getting order" status body
+  let body = Jsont.Json.(null ()) in
+  let* resp, body = post ?ctx cli body url in
+  match resp.C.status with
+  | 200 ->
+    let* order = Order.decode body |> S.return in
+    ok (resp.C.headers, order)
+  | status -> error_msgf "getting order: status %d - body: %S" status body
 
 (* HTTP defines this header as "either seconds" or "absolute HTTP date" *)
-let retry_after h =
-  match Http.Headers.get h "Retry-after" with
+let retry_after headers =
+  let hdrs = List.map (fun (k, v) -> String.lowercase_ascii k, v) headers in
+  match List.assoc_opt "retry-after" hdrs with
   | None -> 1
   | Some x -> try int_of_string x with
       Failure _ ->
       Log.warn (fun m -> m "retry-after header is not an integer, but %s (using 1 second instead)" x);
       1
-
 (* TODO this 'expires' stuff in the order *)
 (* state machine is slightly unclear, from section 7.4 (page 47 top):
    "Once the client believes it has fulfilled the server's requirements,
@@ -441,45 +434,42 @@ let rec process_order ?ctx solver cli sleep csr order_url headers order =
   | Invalid ->
     (* exterminate -- consider the order process abandoned *)
     Log.err (fun m -> m "order %a is invalid, falling apart" Order.pp order);
-    Lwt.return (Error (`Msg "attempting to process an invalid order"))
+    S.return (Error (`Msg "attempting to process an invalid order"))
   | Pending ->
     (* there's still some authorization pending, according to the server! *)
-    let open Lwt_result.Infix in
     Log.warn (fun m -> m "something is pending here... need to work on this");
-    Lwt_list.fold_left_s (fun acc a ->
-        match acc with
-        | Ok () -> process_authorization ?ctx solver cli sleep a
-        | Error e -> Lwt.return (Error e)) (Ok ()) order.authorizations >>= fun () ->
-    get_order ?ctx cli order_url >>= fun (headers, order) ->
+    let rec fold = function
+      | [] -> ok ()
+      | a :: rest ->
+        let* () = process_authorization ?ctx solver cli sleep a in
+        fold rest in
+    let* () = fold order.authorizations in
+    let* headers, order = get_order ?ctx cli order_url in
     process_order ?ctx solver cli sleep csr order_url headers order
   | Ready ->
     (* server agrees that requirements are fulfilled, submit a finalization request *)
-    let open Lwt_result.Infix in
-    finalize ?ctx cli csr order.finalize >>= fun (headers, order) ->
+    let* headers, order = finalize ?ctx cli csr order.finalize in
     process_order ?ctx solver cli sleep csr order_url headers order
   | Processing ->
     (* sleep Retry-After header field time, and re-get order to hopefully get a certificate url *)
     let retry_after = retry_after headers in
     Log.debug (fun m -> m "sleeping for %d seconds" retry_after);
     sleep retry_after >>= fun () ->
-    let open Lwt_result.Infix in
-    get_order ?ctx cli order_url >>= fun (headers, order) ->
+    let* headers, order = get_order ?ctx cli order_url in
     process_order ?ctx solver cli sleep csr order_url headers order
   | Valid ->
     (* the server has issued the certificate and provisioned its URL in the certificate field of the order *)
     match order.certificate with
     | None ->
       Log.warn (fun m -> m "received valid order %a without certificate URL, should not happen" Order.pp order);
-      Lwt.return (Error (`Msg "valid order without certificate URL"))
+      S.return (Error (`Msg "valid order without certificate URL"))
     | Some cert ->
-      dl_certificate ?ctx cli cert >|= function
-      | Error e -> Error e
-      | Ok certs ->
-        Log.info (fun m -> m "retrieved %d certificates" (List.length certs));
-        List.iter (fun c ->
-            Log.info (fun m -> m "%s" (X509.Certificate.encode_pem c)))
-          certs;
-        Ok certs
+      let* certs = dl_certificate ?ctx cli cert in
+      Log.info (fun m -> m "retrieved %d certificates" (List.length certs));
+      List.iter (fun c ->
+          Log.info (fun m -> m "%s" (X509.Certificate.encode_pem c)))
+        certs;
+      ok certs
 
 let new_order ?ctx solver cli sleep csr =
   let hostnames =
@@ -497,19 +487,16 @@ let new_order ?ctx solver cli sleep csr =
       List.map (fun hostname ->
           object' [ mem (name "type") (string "dns")
                   ; mem (name "value") (string hostname) ])
-        hostnames
-    in
-    object' [ mem (name "identifiers") (list ids) ]
-  in
-  http_post_jws ?ctx cli body cli.d.newOrder >>= function
-  | Error e -> Lwt.return (Error e)
-  | Ok (201, headers, body) ->
-    let open Lwt_result.Infix in
-    Lwt_result.lift (Order.decode body) >>= fun order ->
+        hostnames in
+    object' [ mem (name "identifiers") (list ids) ] in
+  let* resp, body = post ?ctx cli body cli.d.Directory.newOrder in
+  match resp.C.status with
+  | 201 ->
+    let* order = S.return (Order.decode body) in
     (* identifiers (should-be-verified to be the same set as the hostnames above?) *)
-    Lwt_result.lift (location headers) >>= fun order_url ->
-    process_order ?ctx solver cli sleep csr (Uri.to_string order_url) headers order
-  | Ok (status, _, body) -> Lwt.return (error_in "newOrder" status body)
+    let* order_url = location resp in
+    process_order ?ctx solver cli sleep csr order_url resp.C.headers order
+  | status -> error_msgf "newOrder: status %d - body: %S" status body
 
 let sign_certificate ?ctx solver cli sleep csr =
   (* send a newOrder request for all the host names in the CSR *)
@@ -521,12 +508,11 @@ let supported_key = function
   | _ -> Error (`Msg "unsupported key type")
 
 let initialise ?ctx ~endpoint ?email account_key =
-  let open Lwt_result.Infix in
   (* create a new client *)
-  Lwt_result.lift (supported_key account_key) >>= fun () ->
-  discover ?ctx endpoint >>= fun d ->
+  let* () = S.return (supported_key account_key) in
+  let* d = discover ?ctx endpoint in
   Log.info (fun m -> m "discovered directory %a" Directory.pp d);
-  get_nonce ?ctx (Uri.of_string d.newNonce) >>= fun nonce ->
+  let* nonce = get_nonce ?ctx d.Directory.newNonce in
   Log.info (fun m -> m "got nonce %s" nonce);
   (* now there are two ways forward
      - register a new account based on account_key

@@ -1,6 +1,5 @@
-val letsencrypt_production_url : Uri.t
-
-val letsencrypt_staging_url : Uri.t
+val letsencrypt_production_url : string
+val letsencrypt_staging_url : string
 
 val sha256_and_base64 : string -> string
 

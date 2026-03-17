@@ -1,8 +1,8 @@
 let letsencrypt_production_url =
-  Uri.of_string "https://acme-v02.api.letsencrypt.org/directory"
+  "https://acme-v02.api.letsencrypt.org/directory"
 
 let letsencrypt_staging_url =
-  Uri.of_string "https://acme-staging-v02.api.letsencrypt.org/directory"
+  "https://acme-staging-v02.api.letsencrypt.org/directory"
 
 let sha256_and_base64 a =
   let open Digestif.SHA256 in
