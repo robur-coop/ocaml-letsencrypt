@@ -148,15 +148,18 @@ let rec http_post_jws ?ctx ?(no_key_url = false) cli data url =
     let kid = if no_key_url then None else Some (Uri.to_string cli.account_url) in
     let extra = Jws.S.singleton "url" (Jsont.Json.string url) in
     let key = Jws.Pk.of_private_key_exn key in
-    let body = Jws.encode ?kid ~extra ~nonce key (json_to_string data) in
+    let body =
+      let data = Jsont_bytesrw.encode_string Jsont.json data in
+      let data = Result.get_ok data in
+      Jws.encode ?kid ~extra ~nonce key data in
     let body_len = string_of_int (String.length body) in
     let headers = Http.Headers.add headers  "Content-Length" body_len in
     let headers = Http.Headers.add headers "Content-Type" "application/jose+json" in
     (headers, body)
   in
   let headers, body = prepare_post cli.account_key cli.next_nonce in
-  Log.debug (fun m -> m "HTTP post %s (data %s body %S)"
-                url (json_to_string data) body);
+  Log.debug (fun m -> m "HTTP post %s (data %a body %S)"
+                url Jsont.Json.pp data body);
   let body = Http.Body.of_string body in
   Http.post ?ctx ~body ~headers (Uri.of_string url) >>= fun (resp, body) ->
   let status = Http.Response.status resp in
@@ -186,9 +189,13 @@ let create_account ?ctx ?email cli =
   let url = cli.d.newAccount in
   let contact = match email with
     | None -> []
-    | Some email -> [ "contact", `List [ `String ("mailto:" ^ email) ] ]
+    | Some email ->
+        let open Jsont.Json in
+        [ mem (name "contact") (list [string ("mailto:" ^ email)]) ]
   in
-  let body = `Assoc (("termsOfServiceAgreed", `Bool true) :: contact) in
+  let body =
+    let open Jsont.Json in
+    object' (mem (name "termsOfServiceAgreed") (bool true) :: contact) in
   http_post_jws ?ctx ~no_key_url:true cli body url >|= function
   | Error e -> Error e
   | Ok (201, headers, body) ->
@@ -203,7 +210,7 @@ let create_account ?ctx ?email cli =
   | Ok (status, _headers, body) -> error_in "newAccount" status body
 
 let get_account ?ctx cli url =
-  let body = `Null in
+  let body = Jsont.Json.null () in
   http_post_jws ?ctx cli body url >|= function
   | Error e -> Error e
   | Ok (200, _headers, body) ->
@@ -217,7 +224,9 @@ let get_account ?ctx cli url =
 
 let find_account_url ?ctx ?email ~nonce key directory =
   let url = directory.Directory.newAccount in
-  let body = `Assoc [ "onlyReturnExisting", `Bool true ] in
+  let body =
+    let open Jsont.Json in
+    object' [ mem (name "onlyReturnExisting") (bool true) ] in
   let cli = {
     next_nonce = nonce ;
     account_key = key ;
@@ -254,7 +263,7 @@ let find_account_url ?ctx ?email ~nonce key directory =
     Lwt.return (error_in "newAccount" status body)
 
 let challenge_solved ?ctx cli url =
-  let body = `Assoc [] in (* not entirely clear why this now is {} and not "" *)
+  let body = Jsont.Json.object' [] in (* not entirely clear why this now is {} and not "" *)
   http_post_jws ?ctx cli body url >|= function
   | Error e -> Error e
   | Ok (200, _headers, body) ->
@@ -318,7 +327,7 @@ let process_challenge ?ctx solver cli sleep host challenge =
 
 (* yeah, we could parallelize them... but first not do it. *)
 let process_authorization ?ctx solver cli sleep url =
-  let body = `Null in
+  let body = Jsont.Json.null () in
   http_post_jws ?ctx cli body url >>= function
   | Error e -> Lwt.return (Error e)
   | Ok (200, _headers, body) ->
@@ -362,7 +371,8 @@ let finalize ?ctx cli csr url =
     let csr_as_b64 =
       X509.Signing_request.encode_der csr |> Jws.Base64u.encode
     in
-    `Assoc [ "csr", `String csr_as_b64 ]
+    let open Jsont.Json in
+    object' [ mem (name "csr") (string csr_as_b64) ]
   in
   http_post_jws ?ctx cli body url >|= function
   | Error e -> Error e
@@ -372,7 +382,7 @@ let finalize ?ctx cli csr url =
   | Ok (status, _, body) -> error_in "finalize" status body
 
 let dl_certificate ?ctx cli url =
-  let body = `Null in
+  let body = Jsont.Json.null () in
   http_post_jws ?ctx cli body url >|= function
   | Error e -> Error e
   | Ok (200, _headers, body) ->
@@ -382,7 +392,7 @@ let dl_certificate ?ctx cli url =
   | Ok (status, _header, body) -> error_in "certificate" status body
 
 let get_order ?ctx cli url =
-  let body = `Null in
+  let body = Jsont.Json.null () in
   http_post_jws ?ctx cli body url >|= function
   | Error e -> Error e
   | Ok (200, headers, body) ->
@@ -482,12 +492,14 @@ let new_order ?ctx solver cli sleep csr =
   let body =
     (* TODO this may contain "notBefore" and "notAfter" as RFC3339 encoded timestamps
        (what the client would like as validity of the certificate) *)
+    let open Jsont.Json in
     let ids =
-      List.map (fun name ->
-          `Assoc [ "type", `String "dns" ; "value", `String name ])
+      List.map (fun hostname ->
+          object' [ mem (name "type") (string "dns")
+                  ; mem (name "value") (string hostname) ])
         hostnames
     in
-    `Assoc [ "identifiers", `List ids ]
+    object' [ mem (name "identifiers") (list ids) ]
   in
   http_post_jws ?ctx cli body cli.d.newOrder >>= function
   | Error e -> Lwt.return (Error e)
