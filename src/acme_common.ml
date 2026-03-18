@@ -12,30 +12,6 @@ let sha256_and_base64 a =
 
 let error_msgf fmt = Fmt.kstr (fun msg -> Error (`Msg msg)) fmt
 
-module J = Yojson.Basic
-
-type json = J.t
-
-(* Serialize a json object without having spaces around. Dammit Yojson. *)
-(* XXX. I didn't pay enough attention on escaping.
- * It is possible that this is okay; however, our encodings are nice. *)
-(* NOTE: hannes thinks that Json.to_string (`String {|foo"bar|}) looks suspicious *)
-let rec json_to_string ?(comma = ",") ?(colon = ":") : J.t -> string = function
-  | `Null -> ""
-  | `String s -> Printf.sprintf {|"%s"|} (String.escaped s)
-  | `Bool b -> if b then "true" else "false"
-  | `Float f -> string_of_float f
-  | `Int i -> string_of_int i
-  | `List l ->
-    let s = List.map (json_to_string ~comma ~colon) l in
-    "[" ^ (String.concat comma s) ^ "]"
-  | `Assoc a ->
-    let serialize_pair (key, value) =
-      Printf.sprintf {|"%s"%s%s|} key colon (json_to_string ~comma ~colon value)
-    in
-    let s = List.map serialize_pair a in
-    Printf.sprintf {|{%s}|} (String.concat comma s)
-
 module S = Map.Make (String)
 
 module Directory = struct
