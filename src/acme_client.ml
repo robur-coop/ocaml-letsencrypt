@@ -148,13 +148,17 @@ let discover ?ctx directory =
   let* resp, body = request ?ctx ~meth:`GET directory in
   match resp.C.status with
   | 200 -> S.return (Directory.decode body)
-  | _ -> error_msgf "Impossible to discover your ACME service"
+  | c -> error_msgf
+           "Impossible to discover your ACME service: status %u - body: %S"
+           c body
 
 let get_nonce ?ctx url =
-  let* r, _ = request ?ctx ~meth:`HEAD url in
+  let* r, body = request ?ctx ~meth:`HEAD url in
   match r.C.status with
   | 200 -> extract_nonce r
-  | _ -> error_msgf "Invalid response from HEAD request to %s" url
+  | c -> error_msgf
+           "Invalid response from HEAD request to %s, status: %u - body %S"
+           url c body
 
 let rec post ?ctx ?(with_kid = false) cli data url =
   let prepare key nonce =
@@ -213,7 +217,8 @@ let create_account ?ctx ?email cli =
     in
     let* account_url = location resp in
     ok { cli with account_url }
-  | _ -> error_msgf "newAccount"
+  | c -> error_msgf "Invalid response to newAccount, status: %u - body %S"
+           c body
 
 let get_account ?ctx cli url =
   let* resp, body = post ?ctx cli Jsont.Json.(null ()) url in
@@ -225,7 +230,8 @@ let get_account ?ctx cli url =
        (or cancelled, considering the lack of a csr)! *)
     Log.info (fun m -> m "account %a" Account.pp acc);
     ok ()
-  | _ -> error_msgf "get_account"
+  | c -> error_msgf "Invalid response to get_account, status: %u - body %S"
+           c body
 
 let find_account_url ?ctx ?email ~nonce key directory =
   let url = directory.Directory.newAccount in
@@ -258,7 +264,7 @@ let find_account_url ?ctx ?email ~nonce key directory =
     end
   (* according to RFC 8555 7.3.3 there can be a forbidden if ToS were updated,
      and the client should re-approve them *)
-  | status -> error_msgf "find_account_url: unexpected status %d" status
+  | status -> error_msgf "find_account_url: unexpected status %u - body %S" status body
 
 let challenge_solved ?ctx cli url =
   let body = Jsont.Json.(object' []) in (* not entirely clear why this now is {} and not "" *)
@@ -270,7 +276,7 @@ let challenge_solved ?ctx cli url =
   | 201 ->
     Log.info (fun m -> m "challenge solved POSTed (CREATE), body %s" body);
     ok ()
-  | status -> error_msgf "challenge solved: status %d - body: %S" status body
+  | status -> error_msgf "challenge solved: status %u - body: %S" status body
 
 let process_challenge ?ctx solver cli sleep host challenge =
   (* overall plan:
@@ -360,7 +366,7 @@ let process_authorization ?ctx solver cli sleep url =
         Log.err (fun m -> m "authorization is revoked");
         S.return (Error (`Msg "revoked"))
       end
-  | status -> error_msgf "authorization: status %d - body: %S" status body
+  | status -> error_msgf "authorization: status %u - body: %S" status body
 
 let finalize ?ctx cli csr url =
   let body =
@@ -373,7 +379,7 @@ let finalize ?ctx cli csr url =
   | 200 ->
     let* order = S.return (Order.decode body) in
     ok (resp.C.headers, order)
-  | status -> error_msgf "finalize: status %d - body: %S" status body
+  | status -> error_msgf "finalize: status %u - body: %S" status body
 
 let dl_certificate ?ctx cli url =
   let body = Jsont.Json.(null ()) in
@@ -383,7 +389,7 @@ let dl_certificate ?ctx cli url =
     (* body is a certificate chain (no comments), with end-entity certificate being the first *)
     (* TODO: check order? figure out chain? *)
     S.return (X509.Certificate.decode_pem_multiple body)
-  | status -> error_msgf "certificate: status %d - body: %S" status body
+  | status -> error_msgf "certificate: status %u - body: %S" status body
 
 let get_order ?ctx cli url =
   let body = Jsont.Json.(null ()) in
@@ -392,7 +398,7 @@ let get_order ?ctx cli url =
   | 200 ->
     let* order = Order.decode body |> S.return in
     ok (resp.C.headers, order)
-  | status -> error_msgf "getting order: status %d - body: %S" status body
+  | status -> error_msgf "getting order: status %u - body: %S" status body
 
 (* HTTP defines this header as "either seconds" or "absolute HTTP date" *)
 let retry_after headers =
@@ -496,7 +502,7 @@ let new_order ?ctx solver cli sleep csr =
     (* identifiers (should-be-verified to be the same set as the hostnames above?) *)
     let* order_url = location resp in
     process_order ?ctx solver cli sleep csr order_url resp.C.headers order
-  | status -> error_msgf "newOrder: status %d - body: %S" status body
+  | status -> error_msgf "newOrder: status %u - body: %S" status body
 
 let sign_certificate ?ctx solver cli sleep csr =
   (* send a newOrder request for all the host names in the CSR *)
