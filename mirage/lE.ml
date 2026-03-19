@@ -9,7 +9,7 @@ type configuration = {
   account_key_bits : int option;
 }
 
-module C : Letsencrypt.Client.C
+module Client : Letsencrypt.Client.Client
   with type 'a t = 'a Lwt.t
    and type ctx = Http_mirage_client.t
 = struct
@@ -59,7 +59,7 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
     account_key_bits : int option;
   }
 
-  module Acme = Letsencrypt.Client.Make (Lwt) (C)
+  module Acme = Letsencrypt.Client.Make (Lwt) (Client)
   module Solver = Letsencrypt.Client.Solver (Lwt)
 
   let gen_key ?seed ?bits key_type =

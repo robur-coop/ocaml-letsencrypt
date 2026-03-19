@@ -1,6 +1,6 @@
 open Lwt.Infix
 
-module C : Letsencrypt.Client.C
+module Client : Letsencrypt.Client.Client
   with type 'a t = 'a Lwt.t
 = struct
   type 'a t = 'a Lwt.t
@@ -56,7 +56,7 @@ module C : Letsencrypt.Client.C
     (fun exn -> Lwt.return_error (`Exn exn))
 end
 
-module Acme_cli = Letsencrypt.Client.Make (Lwt) (C)
+module Acme_cli = Letsencrypt.Client.Make (Lwt) (Client)
 module Solver_cli = Letsencrypt.Client.Solver (Lwt)
 module Dns_cli = Letsencrypt_dns.Make (Lwt)
 

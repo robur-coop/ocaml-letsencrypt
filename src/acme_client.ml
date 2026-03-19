@@ -28,7 +28,7 @@ module type S = sig
   val return : 'a -> 'a t
 end
 
-module type C = sig
+module type Client = sig
   type 'a t
   type ctx
   type error
@@ -112,7 +112,7 @@ let print_alpn =
   alpn_solver solve
 end
 
-module Make (S : S) (C : C with type 'a t = 'a S.t) = struct
+module Make (S : S) (C : Client with type 'a t = 'a S.t) = struct
 include Solver (S)
 
 let ( let* ) x fn =

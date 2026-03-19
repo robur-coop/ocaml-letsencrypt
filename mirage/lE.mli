@@ -49,7 +49,7 @@ type configuration = {
   account_key_bits : int option;
 }
 
-module C : Letsencrypt.Client.C
+module Client : Letsencrypt.Client.Client
   with type 'a t = 'a Lwt.t
    and type ctx = Http_mirage_client.t
 
@@ -65,7 +65,7 @@ module Make (Stack : Tcpip.Stack.V4V6) : sig
     account_key_bits : int option;
   }
 
-  module Acme : module type of Letsencrypt.Client.Make (Lwt) (C)
+  module Acme : module type of Letsencrypt.Client.Make (Lwt) (Client)
 
   val request_handler :
     Ipaddr.t * int -> H1.Server_connection.request_handler
@@ -75,14 +75,14 @@ module Make (Stack : Tcpip.Stack.V4V6) : sig
     ?production:bool ->
     configuration ->
     Http_mirage_client.t ->
-    (Tls.Config.own_cert, [> `Msg of string | `HTTP of C.error ]) result Lwt.t
+    (Tls.Config.own_cert, [> `Msg of string | `HTTP of Client.error ]) result Lwt.t
 
   val initialise :
     ctx:Http_mirage_client.t ->
     endpoint:Uri.t ->
     ?email:string ->
     X509.Private_key.t ->
-    (Letsencrypt.Client.t, [> `Msg of string | `HTTP of C.error ]) result Lwt.t
+    (Letsencrypt.Client.t, [> `Msg of string | `HTTP of Client.error ]) result Lwt.t
   (** [initialise ~ctx ~endpoint ~email priv] constructs a
       {!type:Letsencrypt.Client.t} by looking up the directory and account of
       [priv] at [endpoint]. If no account is registered yet, a new account is
@@ -95,7 +95,7 @@ module Make (Stack : Tcpip.Stack.V4V6) : sig
     Letsencrypt.Client.t ->
     (int -> unit Lwt.t) ->
     X509.Signing_request.t ->
-    (X509.Certificate.t list, [> `Msg of string | `HTTP of C.error ]) result Lwt.t
+    (X509.Certificate.t list, [> `Msg of string | `HTTP of Client.error ]) result Lwt.t
   (** [sign_certificate ~ctx solver t sleep csr] orders a certificate for the
       names in the signing request [csr], and solves the requested challenges. *)
 end

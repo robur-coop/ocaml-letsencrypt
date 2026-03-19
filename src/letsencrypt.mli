@@ -34,7 +34,7 @@ module Client: sig
 
   (** {1 HTTP client interface} *)
 
-  module type C = sig
+  module type Client = sig
     type 'a t
     type ctx
     type error
@@ -86,7 +86,7 @@ module Client: sig
   val print_alpn : solver
   end
 
-  module Make (S : S) (C : C with type 'a t = 'a S.t) : sig
+  module Make (S : S) (C : Client with type 'a t = 'a S.t) : sig
     include module type of Solver (S)
 
     (** [initialise ~ctx ~endpoint ~email priv] constructs a [t] by
@@ -102,7 +102,6 @@ module Client: sig
     val sign_certificate : ?ctx:C.ctx ->
       solver -> t -> (int -> unit S.t) ->
       X509.Signing_request.t ->
-      (* TODO: use X509.Certificat.t * list *)
       (X509.Certificate.t list, [> `Msg of string | `HTTP of C.error ]) result S.t
   end
 
