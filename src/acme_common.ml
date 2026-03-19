@@ -112,7 +112,7 @@ module Directory = struct
     let caaIdentities =
       let enc = Lun.get Optics.caaIdentities in
       let dec_absent = [] in
-      let enc_omit = List.is_empty in
+      let enc_omit = function [] -> true | _ -> false in
       Object.mem "caaIdentities" ~enc ~dec_absent ~enc_omit (list string) in
     let externalAccountRequired =
       let enc = Lun.get Optics.externalAccountRequired in
