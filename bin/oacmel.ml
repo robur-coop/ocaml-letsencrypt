@@ -2,6 +2,7 @@ open Lwt.Infix
 
 module Client : Letsencrypt.Client.Client
   with type 'a t = 'a Lwt.t
+   and type error = [ `Exn of exn ]
 = struct
   type 'a t = 'a Lwt.t
   type ctx = unit
@@ -76,7 +77,8 @@ let doit email endpoint account_key solver sleep csr =
   Acme_cli.initialise ~endpoint ?email account_key >>= function
   | Ok t -> Acme_cli.sign_certificate solver t sleep csr
   | Error (`Msg _ as e) -> Lwt.return_error e
-  | Error (`HTTP _) -> Lwt.return_error (`Msg "HTTP error during ACME operation")
+  | Error (`HTTP (`Exn exn)) ->
+    Lwt.return_error (`Msg ("HTTP error " ^ Printexc.to_string exn ^ " during ACME operation"))
 
 let main _ priv_pem csr_pem email solver acme_dir ip key endpoint cert zone =
   Mirage_crypto_rng_unix.use_default ();
@@ -131,7 +133,8 @@ let main _ priv_pem csr_pem email solver acme_dir ip key endpoint cert zone =
   match r with
   | Ok _ -> Ok ()
   | Error (`Msg e) -> Error (Fmt.str "Error: %s" e)
-  | Error (`HTTP _) -> Error "HTTP error"
+  | Error (`HTTP (`Exn exn)) ->
+    Error (Fmt.str "HTTP error %s" (Printexc.to_string exn))
 
 let setup_log style_renderer level =
   Fmt_tty.setup_std_outputs ?style_renderer ();

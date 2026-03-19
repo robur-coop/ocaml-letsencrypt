@@ -12,6 +12,7 @@ type configuration = {
 module Client : Letsencrypt.Client.Client
   with type 'a t = 'a Lwt.t
    and type ctx = Http_mirage_client.t
+   and type error = Mimic.error
 = struct
   type 'a t = 'a Lwt.t
   type ctx = Http_mirage_client.t
@@ -146,8 +147,8 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
               Log.err (fun m ->
                   m "Got an error when we tried to get a certificate: %s" err) ;
               Lwt.return (Error (`Msg err))
-          | Error (`HTTP _err) ->
-              Lwt.return (Error (`Msg "HTTP error during certificate provisioning")) in
+          | Error (`HTTP err) ->
+              Lwt.return (Error (`Msg (Fmt.str "HTTP error during certificate provisioning: %a" Mimic.pp_error err))) in
         go tries
 
   let initialise ~ctx ~endpoint ?email key = Acme.initialise ~ctx ~endpoint:(Uri.to_string endpoint) ?email key
