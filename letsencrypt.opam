@@ -31,6 +31,3 @@ build: [
 ]
 dev-repo: "git+https://github.com/robur-coop/ocaml-letsencrypt.git"
 x-maintenance-intent: [ "(latest)" ]
-pin-depends: [
-  [ "jws.dev" "git+https://github.com/robur-coop/jws.git#694b8e15c2d9277b32eccd1abb17a1acc55e8f69" ]
-]
