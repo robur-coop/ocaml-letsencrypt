@@ -3,4 +3,4 @@
 (library
  (name letsencrypt)
  (public_name letsencrypt)
- (libraries lwt lun jws logs asn1-combinators x509))
+ (libraries lun jws logs asn1-combinators x509))
