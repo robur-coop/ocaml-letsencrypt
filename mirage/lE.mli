@@ -79,7 +79,7 @@ module Make (Stack : Tcpip.Stack.V4V6) : sig
 
   val initialise :
     ctx:Http_mirage_client.t ->
-    endpoint:Uri.t ->
+    endpoint:string ->
     ?email:string ->
     X509.Private_key.t ->
     (Letsencrypt.Client.t, [> `Msg of string | `HTTP of Client.error ]) result Lwt.t

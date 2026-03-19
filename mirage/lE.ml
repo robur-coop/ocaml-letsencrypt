@@ -151,6 +151,6 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
               Lwt.return (Error (`Msg (Fmt.str "HTTP error during certificate provisioning: %a" Mimic.pp_error err))) in
         go tries
 
-  let initialise ~ctx ~endpoint ?email key = Acme.initialise ~ctx ~endpoint:(Uri.to_string endpoint) ?email key
+  let initialise ~ctx ~endpoint ?email key = Acme.initialise ~ctx ~endpoint ?email key
   let sign_certificate ~ctx solver le sleep csr = Acme.sign_certificate ~ctx solver le sleep csr
 end
