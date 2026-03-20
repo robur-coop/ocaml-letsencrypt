@@ -1,3 +1,9 @@
+# v2.0.0 (2026-03-20)
+
+* Use jws, lun, and jsont, remove yojson (#38 #dinosaure)
+* Remove lwt and uri dependencies from the core, now functorized over scheduler
+  (#39 @dinosaure @hannesm)
+
 # v1.1.0 (2025-02-27)
 
 * Defunctorise, update to paf 0.8.0 (#35 @hannesm)
