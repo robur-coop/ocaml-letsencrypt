@@ -14,7 +14,6 @@ depends: [
   "letsencrypt" {= version}
   "logs"
   "fmt" {>= "0.8.7"}
-  "lwt" {>= "2.6.0"}
   "dns" {>= "9.0.0"}
   "dns-tsig" {>= "9.0.0"}
   "domain-name" {>= "0.2.0"}
