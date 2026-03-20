@@ -9,63 +9,38 @@ type configuration = {
   account_key_bits : int option;
 }
 
-module HTTP : Letsencrypt.HTTP_client.S with type ctx = Http_mirage_client.t =
-struct
+module Client : Letsencrypt.Client.Client
+  with type 'a t = 'a Lwt.t
+   and type ctx = Http_mirage_client.t
+   and type error = Mimic.error
+= struct
+  type 'a t = 'a Lwt.t
   type ctx = Http_mirage_client.t
+  type error = Mimic.error
+  type meth = [ `HEAD | `GET | `POST ]
 
-  module Headers = struct
-    type t = (string * string) list
+  type response =
+    { headers : (string * string) list
+    ; status : int }
 
-    let add lst k v = (String.lowercase_ascii k, v) :: lst
-    let init_with k v = [ String.lowercase_ascii k, v ]
-    let get lst k = List.assoc_opt (String.lowercase_ascii k) lst
-    let get_location lst = Option.map Uri.of_string (get lst "location")
-    let to_string = Fmt.to_to_string Fmt.(Dump.list (Dump.pair string string))
-  end
-
-  module Body = struct
-    type t = string
-
-    let to_string = Lwt.return
-    let of_string x = x
-  end
-
-  module Response = struct
-    type t = Http_mirage_client.response
-
-    let status { Http_mirage_client.status; _ } = Http_mirage_client.Status.to_code status
-    let headers { Http_mirage_client.headers; _ } = Http_mirage_client.Headers.to_list headers
-  end
+  open Lwt.Infix
 
   let get_or_fail msg = function
     | Some ctx -> ctx
     | None -> failwith msg
 
-  open Lwt.Infix
-
-  let head ?ctx ?headers uri =
+  let request ?ctx ?(meth= `GET) ?headers ?body uri =
     let ctx = get_or_fail "http-mirage-client context is required" ctx in
-    Http_mirage_client.request ctx ~meth:`HEAD ?headers (Uri.to_string uri)
-      (fun _response () _str -> Lwt.return_unit)
-      () >>= function
-    | Ok (response, ()) -> Lwt.return response
-    | Error err -> Fmt.failwith "%a" Mimic.pp_error err
-
-  let get ?ctx ?headers uri =
-    let ctx = get_or_fail "http-mirage-client context is required" ctx in
-    Http_mirage_client.request ctx ~meth:`GET ?headers (Uri.to_string uri)
+    let meth = (meth :> H1.Method.t) in
+    Http_mirage_client.request ctx ~meth ?headers ?body uri
       (fun _response buf str -> Buffer.add_string buf str; Lwt.return buf)
       (Buffer.create 0x100) >>= function
-    | Ok (response, buf) -> Lwt.return (response, Buffer.contents buf)
-    | Error err -> Fmt.failwith "%a" Mimic.pp_error err
-
-  let post ?ctx ?body ?chunked:_ ?headers uri =
-    let ctx = get_or_fail "http-mirage-client context is required" ctx in
-    Http_mirage_client.request ctx ~meth:`POST ?body ?headers (Uri.to_string uri)
-      (fun _response buf str -> Buffer.add_string buf str; Lwt.return buf)
-      (Buffer.create 0x100) >>= function
-    | Ok (response, buf) -> Lwt.return (response, Buffer.contents buf)
-    | Error err -> Fmt.failwith "%a" Mimic.pp_error err
+    | Ok (resp, buf) ->
+      let status = Http_mirage_client.Status.to_code resp.Http_mirage_client.status in
+      let headers = Http_mirage_client.Headers.to_list resp.Http_mirage_client.headers in
+      let headers = List.map (fun (k, v) -> String.lowercase_ascii k, v) headers in
+      Lwt.return_ok ({ headers; status }, Buffer.contents buf)
+    | Error err -> Lwt.return_error err
 end
 
 module Log = (val let src = Logs.Src.create "letsencrypt.mirage" in
@@ -83,7 +58,8 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
     account_key_bits : int option;
   }
 
-  module Acme = Letsencrypt.Client.Make (HTTP)
+  module Acme = Letsencrypt.Client.Make (Lwt) (Client)
+  module Solver = Letsencrypt.Client.Solver (Lwt)
 
   let gen_key ?seed ?bits key_type =
     X509.Private_key.generate ?seed ?bits key_type
@@ -133,6 +109,7 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
         H1.Reqd.respond_with_string reqd resp ""
 
   let provision_certificate ?(tries = 10) ?(production = false) cfg ctx =
+    let open Lwt.Infix in
     let ( >>? ) = Lwt_result.bind in
     let endpoint =
       if production
@@ -144,7 +121,6 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
     match csr priv cfg.hostname with
     | Error _ as err -> Lwt.return err
     | Ok csr ->
-        let open Lwt.Infix in
         let account_key =
           gen_key ?seed:cfg.account_seed ?bits:cfg.account_key_bits
             cfg.account_key_type in
@@ -154,7 +130,7 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
         >>? fun le ->
         Log.debug (fun m -> m "Let's encrypt state initialized.") ;
         let sleep sec = Mirage_sleep.ns (Duration.of_sec sec) in
-        let solver = Letsencrypt.Client.http_solver solver in
+        let solver : Acme.solver = Solver.http_solver solver in
         let rec go tries =
           Acme.sign_certificate ~ctx solver le sleep csr >>= function
           | Ok certs -> Lwt.return_ok (`Single (certs, priv))
@@ -168,9 +144,11 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
           | Error (`Msg err) ->
               Log.err (fun m ->
                   m "Got an error when we tried to get a certificate: %s" err) ;
-              Lwt.return (Error (`Msg err)) in
+              Lwt.return (Error (`Msg err))
+          | Error (`HTTP err) ->
+              Lwt.return (Error (`Msg (Fmt.str "HTTP error during certificate provisioning: %a" Mimic.pp_error err))) in
         go tries
 
-  let initialise ~ctx = Acme.initialise ~ctx
-  let sign_certificate ~ctx = Acme.sign_certificate ~ctx
+  let initialise ~ctx ~endpoint ?email key = Acme.initialise ~ctx ~endpoint ?email key
+  let sign_certificate ~ctx solver le sleep csr = Acme.sign_certificate ~ctx solver le sleep csr
 end

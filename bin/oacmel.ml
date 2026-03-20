@@ -1,18 +1,57 @@
 open Lwt.Infix
 
-module HTTP_client = struct
-  module Headers = Cohttp.Header
-  module Body = Cohttp_lwt.Body
+module Client : Letsencrypt.Client.Client
+  with type 'a t = 'a Lwt.t
+   and type error = [ `Exn of exn ]
+= struct
+  type 'a t = 'a Lwt.t
+  type ctx = unit
+  type error = [ `Exn of exn ]
+  type meth = [ `HEAD | `GET | `POST ]
 
-  module Response = struct
-    include Cohttp.Response
-    let status resp = Cohttp.Code.code_of_status (Cohttp.Response.status resp)
-  end
+  type response =
+    { headers : (string * string) list
+    ; status : int }
 
-  include Cohttp_lwt_unix.Client
+  let request ?ctx:_ ?meth ?headers ?body uri =
+    let open Cohttp in
+    let open Cohttp_lwt_unix in
+    let uri = Uri.of_string uri in
+    let headers = match headers with
+      | Some hs -> Some (Header.of_list hs)
+      | None -> None in
+    Lwt.catch (fun () ->
+      begin match meth with
+      | None | Some `GET ->
+        Client.get ?headers uri >>= fun (resp, body) ->
+        Cohttp_lwt.Body.to_string body >>= fun body_str ->
+        let status = Code.code_of_status (Response.status resp) in
+        let hdrs = Header.to_list (Response.headers resp) in
+        let hdrs = List.map (fun (k, v) -> String.lowercase_ascii k, v) hdrs in
+        Lwt.return_ok ({ headers = hdrs; status }, body_str)
+      | Some `HEAD ->
+        Client.head ?headers uri >>= fun resp ->
+        let status = Code.code_of_status (Response.status resp) in
+        let hdrs = Header.to_list (Response.headers resp) in
+        let hdrs = List.map (fun (k, v) -> String.lowercase_ascii k, v) hdrs in
+        Lwt.return_ok ({ headers = hdrs; status }, "")
+      | Some `POST ->
+        let body = Option.map Cohttp_lwt.Body.of_string body in
+        Client.post ?headers ?body uri >>= fun (resp, body) ->
+        Cohttp_lwt.Body.to_string body >>= fun body_str ->
+        let status = Code.code_of_status (Response.status resp) in
+        let hdrs = Header.to_list (Response.headers resp) in
+        let hdrs = List.map (fun (k, v) -> String.lowercase_ascii k, v) hdrs in
+        Lwt.return_ok ({ headers = hdrs; status }, body_str)
+      end)
+    (fun exn -> Lwt.return_error (`Exn exn))
 end
 
-module Acme_cli = Letsencrypt.Client.Make(HTTP_client)
+module Acme_cli = Letsencrypt.Client.Make (Lwt) (Client)
+module Solver_cli = Letsencrypt.Client.Solver (Lwt)
+module Dns_cli = Letsencrypt_dns.Make (Lwt)
+
+let ( let* ) = Result.bind
 
 let dns_out ip buf =
   let out = Lwt_unix.(socket PF_INET SOCK_DGRAM 0) in
@@ -25,9 +64,11 @@ let sleep x = Lwt_unix.sleep (float_of_int x)
 
 let doit email endpoint account_key solver sleep csr =
   Logs.app (fun m -> m "doit %s" endpoint);
-  Acme_cli.initialise ~endpoint:(Uri.of_string endpoint) ?email account_key >>= function
+  Acme_cli.initialise ~endpoint ?email account_key >>= function
   | Ok t -> Acme_cli.sign_certificate solver t sleep csr
-  | Error e -> Lwt.return_error e
+  | Error (`Msg _ as e) -> Lwt.return_error e
+  | Error (`HTTP (`Exn exn)) ->
+    Lwt.return_error (`Msg ("HTTP error " ^ Printexc.to_string exn ^ " during ACME operation"))
 
 let main _ priv_pem csr_pem email solver acme_dir ip key endpoint cert zone =
   Mirage_crypto_rng_unix.use_default ();
@@ -51,7 +92,7 @@ let main _ priv_pem csr_pem email solver acme_dir ip key endpoint cert zone =
             let path = Fpath.(v path / token) in
             Lwt_result.lift (Bos.OS.File.write path content)
           in
-          Letsencrypt.Client.http_solver solve_challenge
+          Solver_cli.http_solver solve_challenge
         | _, None, Some ip, Some (keyname, key) ->
           Logs.app (fun m -> m "using dns solver, writing to %a" Ipaddr.V4.pp ip);
           let ip' = Ipaddr_unix.V4.to_inet_addr ip in
@@ -60,16 +101,16 @@ let main _ priv_pem csr_pem email solver acme_dir ip key endpoint cert zone =
             | Some x -> Domain_name.(host_exn (of_string_exn x))
           in
           let random_id = Randomconv.int16 Mirage_crypto_rng.generate in
-          Letsencrypt_dns.nsupdate random_id Ptime_clock.now (dns_out ip') ~keyname key ~zone
+          Dns_cli.nsupdate random_id Ptime_clock.now (dns_out ip') ~keyname key ~zone
         | Some `Dns, None, None, None ->
           Logs.app (fun m -> m "using dns solver");
-          Letsencrypt_dns.print_dns
+          Dns_cli.print_dns
         | Some `Http, None, None, None ->
           Logs.app (fun m -> m "using http solver");
-          Letsencrypt.Client.print_http
+          Solver_cli.print_http
         | Some `Alpn, None, None, None ->
           Logs.app (fun m -> m "using alpn solver");
-          Letsencrypt.Client.print_alpn
+          Solver_cli.print_alpn
         | _ ->
           invalid_arg "unsupported combination of acme_dir, ip, and key"
       in
@@ -81,7 +122,9 @@ let main _ priv_pem csr_pem email solver acme_dir ip key endpoint cert zone =
   in
   match r with
   | Ok _ -> Ok ()
-  | Error (`Msg e) -> Error (Fmt.str "Error %s" e)
+  | Error (`Msg e) -> Error (Fmt.str "Error: %s" e)
+  | Error (`HTTP (`Exn exn)) ->
+    Error (Fmt.str "HTTP error %s" (Printexc.to_string exn))
 
 let setup_log style_renderer level =
   Fmt_tty.setup_std_outputs ?style_renderer ();
@@ -120,7 +163,7 @@ let key =
 
 let endpoint =
   let doc = "ACME endpoint" in
-  Arg.(value & opt string (Uri.to_string Letsencrypt.letsencrypt_staging_url) & info ["endpoint"] ~doc)
+  Arg.(value & opt string Letsencrypt.letsencrypt_staging_url & info ["endpoint"] ~doc)
 
 let zone =
   let doc = "Zone for nsupdate packet (defaults to key with first two labels dropped)" in

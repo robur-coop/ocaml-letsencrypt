@@ -6,13 +6,10 @@
     Currently, this library has been tested (and is working) only with
     Letsencrypt servers.
  *)
-val letsencrypt_production_url : Uri.t
-val letsencrypt_staging_url : Uri.t
+val letsencrypt_production_url : string
+val letsencrypt_staging_url : string
 
 val sha256_and_base64 : string -> string
-
-(** The required HTTP client to do the Let's encrypt challenge. *)
-module HTTP_client = HTTP_client
 
 (** ACME Client.
 
@@ -26,10 +23,36 @@ module Client: sig
   type t
   type challenge = DNS | HTTP | ALPN
 
+  (** {1 Scheduler monad} *)
+
+  module type S = sig
+    type 'a t
+
+    val bind : 'a t -> ('a -> 'b t) -> 'b t
+    val return : 'a -> 'a t
+  end
+
+  (** {1 HTTP client interface} *)
+
+  module type Client = sig
+    type 'a t
+    type ctx
+    type error
+    type meth = [ `HEAD | `GET | `POST ]
+
+    type response =
+      { headers : (string * string) list
+      ; status : int }
+
+    val request : ?ctx:ctx -> ?meth:meth -> ?headers:(string * string) list
+      -> ?body:string -> string -> (response * string, error) result t
+  end
+
+  module Solver (S : S) : sig
   type solver = {
-    typ : challenge;
+    challenge : challenge;
     solve_challenge : token:string -> key_authorization:string ->
-      [`host] Domain_name.t -> (unit, [ `Msg of string]) result Lwt.t;
+      [`host] Domain_name.t -> (unit, [ `Msg of string]) result S.t;
   }
 
   (** [http_solver (fun domain ~prefix ~token ~content)] is a solver for
@@ -40,7 +63,7 @@ module Client: sig
   *)
   val http_solver :
     ([`host] Domain_name.t -> prefix:string -> token:string -> content:string ->
-     (unit, [ `Msg of string ]) result Lwt.t) -> solver
+     (unit, [ `Msg of string ]) result S.t) -> solver
 
   (** [print_http] outputs the HTTP challenge solution, and waits for user input
       before continuing with ACME. *)
@@ -56,29 +79,30 @@ module Client: sig
   val alpn_solver :
     ?key_type:X509.Key_type.t -> ?bits:int ->
     ([`host] Domain_name.t -> alpn:string -> X509.Private_key.t ->
-     X509.Certificate.t -> (unit, [ `Msg of string ]) result Lwt.t) -> solver
+     X509.Certificate.t -> (unit, [ `Msg of string ]) result S.t) -> solver
 
   (** [print_alpn] outputs the ALPN challenge solution, and waits for user input
       before continuing with ACME. *)
   val print_alpn : solver
+  end
 
-  module Make (Http : HTTP_client.S) : sig
+  module Make (S : S) (C : Client with type 'a t = 'a S.t) : sig
+    include module type of Solver (S)
 
     (** [initialise ~ctx ~endpoint ~email priv] constructs a [t] by
         looking up the directory and account of [priv] at [endpoint]. If no
         account is registered yet, a new account is created with contact
         information of [email]. The terms of service are agreed on. *)
-    val initialise : ?ctx:Http.ctx -> endpoint:Uri.t -> ?email:string ->
-      X509.Private_key.t -> (t, [> `Msg of string ]) result Lwt.t
+    val initialise : ?ctx:C.ctx -> endpoint:string -> ?email:string ->
+      X509.Private_key.t -> (t, [> `Msg of string | `HTTP of C.error ]) result S.t
 
     (** [sign_certificate ~ctx solver t sleep csr] orders a certificate for
         the names in the signing request [csr], and solves the requested
         challenges. *)
-    val sign_certificate : ?ctx:Http.ctx ->
-      solver -> t -> (int -> unit Lwt.t) ->
+    val sign_certificate : ?ctx:C.ctx ->
+      solver -> t -> (int -> unit S.t) ->
       X509.Signing_request.t ->
-      (X509.Certificate.t list, [> `Msg of string ]) result Lwt.t
-      (* TODO: use X509.Certificate.t * list *)
+      (X509.Certificate.t list, [> `Msg of string | `HTTP of C.error ]) result S.t
   end
 
 end
