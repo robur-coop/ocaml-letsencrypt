@@ -29,11 +29,9 @@ module Client : Letsencrypt.Client.Client
     | Some ctx -> ctx
     | None -> failwith msg
 
-  let request ?ctx ?meth ?headers ?body uri =
+  let request ?ctx ?(meth= `GET) ?headers ?body uri =
     let ctx = get_or_fail "http-mirage-client context is required" ctx in
-    let meth = match meth with
-      | Some `HEAD -> `HEAD | Some `GET -> `GET | Some `POST -> `POST
-      | None -> `GET in
+    let meth = (meth :> H1.Method.t) in
     Http_mirage_client.request ctx ~meth ?headers ?body uri
       (fun _response buf str -> Buffer.add_string buf str; Lwt.return buf)
       (Buffer.create 0x100) >>= function

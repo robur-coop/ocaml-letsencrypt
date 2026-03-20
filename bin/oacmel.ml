@@ -22,29 +22,19 @@ module Client : Letsencrypt.Client.Client
       | None -> None in
     Lwt.catch (fun () ->
       begin match meth with
-      | Some `HEAD | None ->
-        begin match meth with
-        | Some `HEAD ->
-          Client.head ?headers uri >>= fun resp ->
-          let status = Code.code_of_status (Response.status resp) in
-          let hdrs = Header.to_list (Response.headers resp) in
-          let hdrs = List.map (fun (k, v) -> String.lowercase_ascii k, v) hdrs in
-          Lwt.return_ok ({ headers = hdrs; status }, "")
-        | _ ->
-          Client.get ?headers uri >>= fun (resp, body) ->
-          Cohttp_lwt.Body.to_string body >>= fun body_str ->
-          let status = Code.code_of_status (Response.status resp) in
-          let hdrs = Header.to_list (Response.headers resp) in
-          let hdrs = List.map (fun (k, v) -> String.lowercase_ascii k, v) hdrs in
-          Lwt.return_ok ({ headers = hdrs; status }, body_str)
-        end
-      | Some `GET ->
+      | None | Some `GET ->
         Client.get ?headers uri >>= fun (resp, body) ->
         Cohttp_lwt.Body.to_string body >>= fun body_str ->
         let status = Code.code_of_status (Response.status resp) in
         let hdrs = Header.to_list (Response.headers resp) in
         let hdrs = List.map (fun (k, v) -> String.lowercase_ascii k, v) hdrs in
         Lwt.return_ok ({ headers = hdrs; status }, body_str)
+      | Some `HEAD ->
+        Client.head ?headers uri >>= fun resp ->
+        let status = Code.code_of_status (Response.status resp) in
+        let hdrs = Header.to_list (Response.headers resp) in
+        let hdrs = List.map (fun (k, v) -> String.lowercase_ascii k, v) hdrs in
+        Lwt.return_ok ({ headers = hdrs; status }, "")
       | Some `POST ->
         let body = Option.map Cohttp_lwt.Body.of_string body in
         Client.post ?headers ?body uri >>= fun (resp, body) ->

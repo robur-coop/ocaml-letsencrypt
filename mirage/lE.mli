@@ -52,6 +52,7 @@ type configuration = {
 module Client : Letsencrypt.Client.Client
   with type 'a t = 'a Lwt.t
    and type ctx = Http_mirage_client.t
+   and type error = Mimic.error
 
 module Make (Stack : Tcpip.Stack.V4V6) : sig
   type nonrec configuration = configuration = {
