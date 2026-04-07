@@ -418,16 +418,24 @@ module Order = struct
 end
 
 module Challenge = struct
-  type typ = DNS | HTTP | ALPN
+  type typ = DNS | HTTP | ALPN | Unknown of string
 
   let pp_typ ppf t =
-    Fmt.string ppf (match t with DNS -> "DNS" | HTTP -> "HTTP" | ALPN -> "ALPN")
+    Fmt.string ppf (match t with DNS -> "DNS" | HTTP -> "HTTP" | ALPN -> "ALPN"
+                               | Unknown s -> s)
 
   let typ =
-    let dns = "dns-01", DNS
-    and http = "http-01", HTTP
-    and alpn = "tls-alpn-01", ALPN in
-    Jsont.enum [ dns; http; alpn ]
+    let dec s = match s with
+      | "dns-01" -> DNS
+      | "http-01" -> HTTP
+      | "tls-alpn-01" -> ALPN
+      | s -> Unknown s in
+    let enc = function
+      | DNS -> "dns-01"
+      | HTTP -> "http-01"
+      | ALPN -> "tls-alpn-01"
+      | Unknown s -> s in
+    Jsont.map ~dec ~enc Jsont.string
 
   type status =
     | Pending

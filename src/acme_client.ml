@@ -19,7 +19,7 @@ type t = {
   account_url : string;
 }
 
-type challenge = Challenge.typ = DNS | HTTP | ALPN
+type challenge = Challenge.typ = DNS | HTTP | ALPN | Unknown of string
 
 module type S = sig
   type 'a t
