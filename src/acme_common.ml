@@ -230,7 +230,9 @@ module Account = struct
       Object.mem "status" ~enc status in
     let contact =
       let enc = Lun.get Optics.contact in
-      Object.mem "contact" ~enc (list string) in
+      let dec_absent = [] in
+      let enc_omit = function [] -> true | _ -> false in
+      Object.mem "contact" ~enc ~dec_absent ~enc_omit (list string) in
     let termsOfServiceAgreed =
       let enc = Lun.get Optics.termsOfServiceAgreed in
       let dec_absent = false in
@@ -238,7 +240,9 @@ module Account = struct
       Object.mem "termsOfServiceAgreed" ~enc ~dec_absent ~enc_omit bool in
     let orders =
       let enc = Lun.get Optics.orders in
-      Object.mem "orders" ~enc string in
+      let dec_absent = "" in
+      let enc_omit = function "" -> true | _ -> false in
+      Object.mem "orders" ~enc ~dec_absent ~enc_omit string in
     let fn status contact termsOfServiceAgreed orders =
       { status; contact; termsOfServiceAgreed; orders } in
     Object.map fn
@@ -526,7 +530,9 @@ module Challenge = struct
       Object.opt_mem "error" ~enc (Object.as_string_map json) in
     let token =
       let enc = Lun.get Optics.token in
-      Object.mem "token" ~enc string in
+      let dec_absent = "" in
+      let enc_omit = function "" -> true | _ -> false in
+      Object.mem "token" ~enc ~dec_absent ~enc_omit string in
     let fn typ url status validated error token =
       { typ; url; status; validated; error; token } in
     Object.map fn
