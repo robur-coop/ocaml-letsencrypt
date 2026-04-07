@@ -612,11 +612,19 @@ module Authorization = struct
         (fun t wildcard -> { t with wildcard })
   end
 
+  let identifier =
+    let open Jsont in
+    let enc = Fun.const "dns" in
+    let t = Object.mem "type" ~enc (const string "dns") in
+    let identifier = Object.mem "value" ~enc:Fun.id string in
+    Object.map (fun _ value -> value)
+    |> t |> identifier |> Object.finish
+
   let t =
     let open Jsont in
     let identifier =
       let enc = Lun.get Optics.identifier in
-      Object.mem "identifier" ~enc string in
+      Object.mem "identifier" ~enc identifier in
     let status =
       let enc = Lun.get Optics.status in
       Object.mem "status" ~enc status in
