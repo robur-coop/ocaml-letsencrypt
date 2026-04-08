@@ -65,7 +65,7 @@ module Order : sig
 end
 
 module Challenge : sig
-  type typ = DNS | HTTP | ALPN
+  type typ = DNS | HTTP | ALPN | Unknown of string
 
   type status =
     | Pending

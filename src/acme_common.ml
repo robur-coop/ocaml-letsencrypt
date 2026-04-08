@@ -230,7 +230,9 @@ module Account = struct
       Object.mem "status" ~enc status in
     let contact =
       let enc = Lun.get Optics.contact in
-      Object.mem "contact" ~enc (list string) in
+      let dec_absent = [] in
+      let enc_omit = function [] -> true | _ -> false in
+      Object.mem "contact" ~enc ~dec_absent ~enc_omit (list string) in
     let termsOfServiceAgreed =
       let enc = Lun.get Optics.termsOfServiceAgreed in
       let dec_absent = false in
@@ -238,7 +240,9 @@ module Account = struct
       Object.mem "termsOfServiceAgreed" ~enc ~dec_absent ~enc_omit bool in
     let orders =
       let enc = Lun.get Optics.orders in
-      Object.mem "orders" ~enc string in
+      let dec_absent = "" in
+      let enc_omit = function "" -> true | _ -> false in
+      Object.mem "orders" ~enc ~dec_absent ~enc_omit string in
     let fn status contact termsOfServiceAgreed orders =
       { status; contact; termsOfServiceAgreed; orders } in
     Object.map fn
@@ -418,16 +422,24 @@ module Order = struct
 end
 
 module Challenge = struct
-  type typ = DNS | HTTP | ALPN
+  type typ = DNS | HTTP | ALPN | Unknown of string
 
   let pp_typ ppf t =
-    Fmt.string ppf (match t with DNS -> "DNS" | HTTP -> "HTTP" | ALPN -> "ALPN")
+    Fmt.string ppf (match t with DNS -> "DNS" | HTTP -> "HTTP" | ALPN -> "ALPN"
+                               | Unknown s -> s)
 
   let typ =
-    let dns = "dns-01", DNS
-    and http = "http-01", HTTP
-    and alpn = "tls-alpn-01", ALPN in
-    Jsont.enum [ dns; http; alpn ]
+    let dec s = match s with
+      | "dns-01" -> DNS
+      | "http-01" -> HTTP
+      | "tls-alpn-01" -> ALPN
+      | s -> Unknown s in
+    let enc = function
+      | DNS -> "dns-01"
+      | HTTP -> "http-01"
+      | ALPN -> "tls-alpn-01"
+      | Unknown s -> s in
+    Jsont.map ~dec ~enc Jsont.string
 
   type status =
     | Pending
@@ -518,7 +530,9 @@ module Challenge = struct
       Object.opt_mem "error" ~enc (Object.as_string_map json) in
     let token =
       let enc = Lun.get Optics.token in
-      Object.mem "token" ~enc string in
+      let dec_absent = "" in
+      let enc_omit = function "" -> true | _ -> false in
+      Object.mem "token" ~enc ~dec_absent ~enc_omit string in
     let fn typ url status validated error token =
       { typ; url; status; validated; error; token } in
     Object.map fn
@@ -604,11 +618,19 @@ module Authorization = struct
         (fun t wildcard -> { t with wildcard })
   end
 
+  let identifier =
+    let open Jsont in
+    let enc = Fun.const "dns" in
+    let t = Object.mem "type" ~enc (const string "dns") in
+    let identifier = Object.mem "value" ~enc:Fun.id string in
+    Object.map (fun _ value -> value)
+    |> t |> identifier |> Object.finish
+
   let t =
     let open Jsont in
     let identifier =
       let enc = Lun.get Optics.identifier in
-      Object.mem "identifier" ~enc string in
+      Object.mem "identifier" ~enc identifier in
     let status =
       let enc = Lun.get Optics.status in
       Object.mem "status" ~enc status in

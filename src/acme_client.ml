@@ -19,7 +19,7 @@ type t = {
   account_url : string;
 }
 
-type challenge = Challenge.typ = DNS | HTTP | ALPN
+type challenge = Challenge.typ = DNS | HTTP | ALPN | Unknown of string
 
 module type S = sig
   type 'a t
@@ -160,12 +160,14 @@ let get_nonce ?ctx url =
            "Invalid response from HEAD request to %s, status: %u - body %S"
            url c body
 
-let rec post ?ctx ?(with_kid = false) cli data url =
+let rec post ?ctx ?(with_kid = false) cli ?data url =
   let prepare key nonce =
     let kid = if with_kid then None else Some cli.account_url in
     let extra = Jws.S.singleton "url" (Jsont.Json.string url) in
     let key = Jws.Pk.of_private_key_exn key in
-    let data = Jsont_bytesrw.encode_string Jsont.json data |> Result.get_ok in
+    let data = match data with
+      | None -> ""
+      | Some data -> Jsont_bytesrw.encode_string Jsont.json data |> Result.get_ok in
     let body = Jws.encode ?kid ~extra ~nonce key data in
     let headers =
       [ "Content-Type", "application/jose+json"
@@ -174,7 +176,7 @@ let rec post ?ctx ?(with_kid = false) cli data url =
   in
   let headers, body = prepare cli.account_key cli.next_nonce in
   Log.debug (fun m -> m "HTTP post %s (data %a body %S)"
-                url Jsont.Json.pp data body);
+                url Fmt.(option Jsont.Json.pp) data body);
   let* resp, body = request ?ctx ~meth:`POST ~body ~headers url in
   Log.debug (fun m -> m "Got code: %3d" resp.C.status);
   Log.debug (fun m -> m "headers %a" Fmt.(Dump.list (pair string string)) resp.C.headers);
@@ -192,7 +194,7 @@ let rec post ?ctx ?(with_kid = false) cli data url =
       | `Bad_nonce ->
           Log.warn (fun m -> m "received bad nonce %s from server, retrying same request"
                        err.detail);
-          post ?ctx cli data url
+          post ?ctx cli ?data url
       | _ -> ok (resp, body) end
   | _ -> ok (resp, body)
 
@@ -207,7 +209,7 @@ let create_account ?ctx ?email cli =
   let body =
     let open Jsont.Json in
     object' (mem (name "termsOfServiceAgreed") (bool true) :: contact) in
-  let* resp, body = post ?ctx ~with_kid:true cli body url in
+  let* resp, body = post ?ctx ~with_kid:true cli ~data:body url in
   match resp.C.status with
   | 201 ->
     let* account = Account.decode body |> S.return in
@@ -221,7 +223,7 @@ let create_account ?ctx ?email cli =
            c body
 
 let get_account ?ctx cli url =
-  let* resp, body = post ?ctx cli Jsont.Json.(null ()) url in
+  let* resp, body = post ?ctx cli url in
   match resp.C.status with
   | 200 ->
     (* at least staging doesn't include orders *)
@@ -243,7 +245,7 @@ let find_account_url ?ctx ?email ~nonce key directory =
     ; account_key = key
     ; d= directory
     ; account_url = String.empty } in
-  let* resp, body = post ?ctx ~with_kid:false cli body url in
+  let* resp, body = post ?ctx ~with_kid:true cli ~data:body url in
   match resp.C.status with
   | 200 ->
     (* unclear why this is not an account object, as required in 7.3.0/7.3.1 *)
@@ -267,8 +269,8 @@ let find_account_url ?ctx ?email ~nonce key directory =
   | status -> error_msgf "find_account_url: unexpected status %u - body %S" status body
 
 let challenge_solved ?ctx cli url =
-  let body = Jsont.Json.(object' []) in (* not entirely clear why this now is {} and not "" *)
-  let* resp, body = post ?ctx cli body url in
+  let data = Jsont.Json.(object' []) in (* not entirely clear why this now is {} and not "" *)
+  let* resp, body = post ?ctx cli ~data url in
   match resp.C.status with
   | 200 ->
     Log.info (fun m -> m "challenge solved POSTed (OK), body %s" body);
@@ -331,8 +333,7 @@ let process_challenge ?ctx solver cli sleep host challenge =
 (* yeah, we could parallelize them... but first not do it. *)
 
 let process_authorization ?ctx solver cli sleep url =
-  let body = Jsont.Json.(null ()) in
-  let* resp, body = post ?ctx cli body url in
+  let* resp, body = post ?ctx cli url in
   match resp.C.status with
   | 200 ->
       let* auth = S.return (Authorization.decode body) in
@@ -369,12 +370,12 @@ let process_authorization ?ctx solver cli sleep url =
   | status -> error_msgf "authorization: status %u - body: %S" status body
 
 let finalize ?ctx cli csr url =
-  let body =
+  let data =
     let csr_as_b64 =
       X509.Signing_request.encode_der csr |> Jws.Base64u.encode in
     let open Jsont.Json in
     object' [ mem (name "csr") (string csr_as_b64) ] in
-  let* resp, body = post ?ctx cli body url in
+  let* resp, body = post ?ctx cli ~data url in
   match resp.C.status with
   | 200 ->
     let* order = S.return (Order.decode body) in
@@ -382,8 +383,7 @@ let finalize ?ctx cli csr url =
   | status -> error_msgf "finalize: status %u - body: %S" status body
 
 let dl_certificate ?ctx cli url =
-  let body = Jsont.Json.(null ()) in
-  let* resp, body = post ?ctx cli body url in
+  let* resp, body = post ?ctx cli url in
   match resp.C.status with
   | 200 ->
     (* body is a certificate chain (no comments), with end-entity certificate being the first *)
@@ -392,8 +392,7 @@ let dl_certificate ?ctx cli url =
   | status -> error_msgf "certificate: status %u - body: %S" status body
 
 let get_order ?ctx cli url =
-  let body = Jsont.Json.(null ()) in
-  let* resp, body = post ?ctx cli body url in
+  let* resp, body = post ?ctx cli url in
   match resp.C.status with
   | 200 ->
     let* order = Order.decode body |> S.return in
@@ -495,7 +494,7 @@ let new_order ?ctx solver cli sleep csr =
                   ; mem (name "value") (string hostname) ])
         hostnames in
     object' [ mem (name "identifiers") (list ids) ] in
-  let* resp, body = post ?ctx cli body cli.d.Directory.newOrder in
+  let* resp, body = post ?ctx cli ~data:body cli.d.Directory.newOrder in
   match resp.C.status with
   | 201 ->
     let* order = S.return (Order.decode body) in

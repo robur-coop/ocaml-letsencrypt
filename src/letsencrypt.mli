@@ -21,7 +21,7 @@ val sha256_and_base64 : string -> string
  *)
 module Client: sig
   type t
-  type challenge = DNS | HTTP | ALPN
+  type challenge = DNS | HTTP | ALPN | Unknown of string
 
   (** {1 Scheduler monad} *)
 
