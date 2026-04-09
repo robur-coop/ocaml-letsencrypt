@@ -1,3 +1,7 @@
+# v2.1.0 (2026-04-09)
+
+- Fix few bugs on our letsencrypt client (@dinosaure, @hannesm, #43)
+
 # v2.0.0 (2026-03-20)
 
 * Use jws, lun, and jsont, remove yojson (#38 #dinosaure)
