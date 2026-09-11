@@ -66,11 +66,18 @@ module Make (Stack : Tcpip.Stack.V4V6) = struct
 
   let csr key host =
     let host = Domain_name.to_string host in
+    let extensions =
+      let ext =
+        let gn = X509.General_name.(singleton DNS [ host ]) in
+        X509.Extension.(singleton Subject_alt_name (false, gn))
+      in
+      X509.Signing_request.Ext.(singleton Extensions ext)
+    in
     let cn =
       X509.
-        [ Distinguished_name.(Relative_distinguished_name.singleton (CN host)) ]
+        [ Distinguished_name.(Relative_distinguished_name.singleton (CN (Common_name.v host))) ]
     in
-    X509.Signing_request.create cn key
+    X509.Signing_request.create cn ~extensions key
 
   let prefix = (".well-known", "acme-challenge")
   let tokens = Hashtbl.create 1
