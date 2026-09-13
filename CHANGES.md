@@ -1,3 +1,7 @@
+# v2.1.1 (2026-09-13)
+
+- Adapt to x509 1.2.0 (#45 @hannesm)
+
 # v2.1.0 (2026-04-09)
 
 - Fix few bugs on our letsencrypt client (@dinosaure, @hannesm, #43)
