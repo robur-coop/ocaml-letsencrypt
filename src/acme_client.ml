@@ -80,7 +80,7 @@ let alpn_solver ?(key_type = `RSA) ?(bits = 2048) writef =
     let solution = Digestif.SHA256.digest_string key_authorization in
     let solution = Digestif.SHA256.to_raw_string solution in
     let name = Domain_name.to_string domain in
-    let cn = Distinguished_name.CN name in
+    let cn = Distinguished_name.(CN (Common_name.v name)) in
     let dn = [ Distinguished_name.Relative_distinguished_name.singleton cn ] in
     let extensions =
       let gn = General_name.(singleton DNS [ name ]) in
